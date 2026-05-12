@@ -80,8 +80,9 @@ When evaluating architecture, think "boring by default." When reviewing tests, t
 ### Design Doc Check
 ```bash
 setopt +o nomatch 2>/dev/null || true  # zsh compat
-SLUG=$(~/.claude/skills/gstack/browse/bin/remote-slug 2>/dev/null || basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")
-BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null | tr '/' '-' || echo 'no-branch')
+SLUG=$(~/.claude/skills/gstack/browse/bin/remote-slug 2>/dev/null || basename "$(jj root 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null || pwd)")
+BRANCH=$(jj log -r @ --no-graph -T 'bookmarks.join(",")' 2>/dev/null | tr '/' '-' | sed 's/,$//' || echo 'no-branch')
+[ -z "$BRANCH" ] && BRANCH=$(jj log -r @ --no-graph -T 'change_id.short()' 2>/dev/null || echo 'no-branch')
 DESIGN=$(ls -t ~/.gstack/projects/$SLUG/*-$BRANCH-design-*.md 2>/dev/null | head -1)
 [ -z "$DESIGN" ] && DESIGN=$(ls -t ~/.gstack/projects/$SLUG/*-design-*.md 2>/dev/null | head -1)
 [ -n "$DESIGN" ] && echo "Design doc found: $DESIGN" || echo "No design doc found"
@@ -239,7 +240,7 @@ If any failure mode has no test AND no error handling AND would be silent, flag 
 
 ### Worktree parallelization strategy
 
-Analyze the plan's implementation steps for parallel execution opportunities. This helps the user split work across git worktrees (via Claude Code's Agent tool with `isolation: "worktree"` or parallel workspaces).
+Analyze the plan's implementation steps for parallel execution opportunities. This helps the user split work across jj workspaces or agent-isolated worktrees.
 
 **Skip if:** all steps touch the same primary module, or the plan has fewer than 2 independent workstreams. In that case, write: "Sequential implementation, no parallelization opportunity."
 
@@ -280,7 +281,7 @@ At the end of the review, fill in and display this summary so the user can see a
 - Lake Score: X/Y recommendations chose complete option
 
 ## Retrospective learning
-Check the git log for this branch. If there are prior commits suggesting a previous review cycle (e.g., review-driven refactors, reverted changes), note what was changed and whether the current plan touches the same areas. Be more aggressive reviewing areas that were previously problematic.
+Check the jj log for this branch. If there are prior commits suggesting a previous review cycle (e.g., review-driven refactors, reverted changes), note what was changed and whether the current plan touches the same areas. Be more aggressive reviewing areas that were previously problematic.
 
 ## Formatting rules
 * NUMBER issues (1, 2, 3...) and LETTERS for options (A, B, C...).
@@ -309,7 +310,7 @@ Substitute values from the Completion Summary:
 - **critical_gaps**: number from "Failure modes: ___ critical gaps flagged"
 - **issues_found**: total issues found across all review sections (Architecture + Code Quality + Performance + Test gaps)
 - **MODE**: FULL_REVIEW / SCOPE_REDUCED
-- **COMMIT**: output of `git rev-parse --short HEAD`
+- **COMMIT**: output of `jj log -r @ --no-graph -T 'commit_id.short()'`
 
 {{REVIEW_DASHBOARD}}
 

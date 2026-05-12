@@ -87,6 +87,16 @@ if [ -z "$WARN" ] && printf '%s' "$CMD" | grep -qE 'git\s+(checkout|restore)\s+\
   PATTERN="git_discard"
 fi
 
+# jj abandon / broad jj restore
+if [ -z "$WARN" ] && printf '%s' "$CMD" | grep -qE 'jj\s+abandon(\s|$)' 2>/dev/null; then
+  WARN="Destructive: jj abandon hides changes from the visible history."
+  PATTERN="jj_abandon"
+fi
+if [ -z "$WARN" ] && printf '%s' "$CMD" | grep -qE 'jj\s+restore(\s+(@|\.|$)|$)' 2>/dev/null; then
+  WARN="Destructive: broad jj restore can discard working-copy changes."
+  PATTERN="jj_restore"
+fi
+
 # kubectl delete
 if [ -z "$WARN" ] && printf '%s' "$CMD" | grep -qE 'kubectl\s+delete' 2>/dev/null; then
   WARN="Destructive: kubectl delete removes Kubernetes resources. May impact production."

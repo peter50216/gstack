@@ -3,7 +3,7 @@ name: careful
 version: 0.1.0
 description: |
   Safety guardrails for destructive commands. Warns before rm -rf, DROP TABLE,
-  force-push, git reset --hard, kubectl delete, and similar destructive operations.
+  force-push, git reset --hard, jj abandon, kubectl delete, and similar destructive operations.
   User can override each warning. Use when touching prod, debugging live systems,
   or working in a shared environment. Use when asked to "be careful", "safety mode",
   "prod mode", or "careful mode". (gstack)
@@ -33,7 +33,7 @@ and can choose to proceed or cancel.
 
 ```bash
 mkdir -p ~/.gstack/analytics
-echo '{"skill":"careful","ts":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","repo":"'$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null || echo "unknown")'"}'  >> ~/.gstack/analytics/skill-usage.jsonl 2>/dev/null || true
+echo '{"skill":"careful","ts":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","repo":"'$(basename "$(jj root 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null || echo "unknown")'"}'  >> ~/.gstack/analytics/skill-usage.jsonl 2>/dev/null || true
 ```
 
 ## What's protected
@@ -46,6 +46,7 @@ echo '{"skill":"careful","ts":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","repo":"'$(base
 | `git push --force` / `-f` | `git push -f origin main` | History rewrite |
 | `git reset --hard` | `git reset --hard HEAD~3` | Uncommitted work loss |
 | `git checkout .` / `git restore .` | `git checkout .` | Uncommitted work loss |
+| `jj abandon` / broad `jj restore` | `jj abandon @` | Change loss |
 | `kubectl delete` | `kubectl delete pod` | Production impact |
 | `docker rm -f` / `docker system prune` | `docker system prune -a` | Container/image loss |
 

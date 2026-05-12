@@ -11,7 +11,7 @@ For each failing test:
 
 1. **Get the files changed on this branch:**
    \`\`\`bash
-   git diff origin/<base>...HEAD --name-only
+   jj diff --from <base>@origin --to @ --name-only
    \`\`\`
 
 2. **Classify the failure:**
@@ -65,7 +65,7 @@ Use AskUserQuestion:
 **If "Investigate and fix now":**
 - Switch to /investigate mindset: root cause first, then minimal fix.
 - Fix the pre-existing failure.
-- Commit the fix separately from the branch's changes: \`git commit -m "fix: pre-existing test failure in <test-file>"\`
+- Commit the fix separately from the branch's changes: \`jj commit <fixed-files> -m "fix: pre-existing test failure in <test-file>"\`
 - Continue with the workflow.
 
 **If "Add as P0 TODO":**
@@ -78,9 +78,9 @@ Use AskUserQuestion:
 - Find who likely broke it. Check BOTH the test file AND the production code it tests:
   \`\`\`bash
   # Who last touched the failing test?
-  git log --format="%an (%ae)" -1 -- <failing-test-file>
+  jj log -r 'files("<failing-test-file>")' -n 1 --no-graph -T 'author.name() ++ " (" ++ author.email() ++ ")\\n"'
   # Who last touched the production code the test covers? (often the actual breaker)
-  git log --format="%an (%ae)" -1 -- <source-file-under-test>
+  jj log -r 'files("<source-file-under-test>")' -n 1 --no-graph -T 'author.name() ++ " (" ++ author.email() ++ ")\\n"'
   \`\`\`
   If these are different people, prefer the production code author — they likely introduced the regression.
 - Create an issue assigned to that person (use the platform detected in Step 0):
@@ -105,4 +105,3 @@ Use AskUserQuestion:
 - Continue with the workflow.
 - Note in output: "Pre-existing test failure skipped: <test-name>"`;
 }
-

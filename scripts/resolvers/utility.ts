@@ -11,10 +11,11 @@ export function generateSlugSetup(ctx: TemplateContext): string {
 export function generateBaseBranchDetect(_ctx: TemplateContext): string {
   return `## Step 0: Detect platform and base branch
 
-First, detect the git hosting platform from the remote URL:
+First, detect the Git hosting platform from the remote URL. In jj repos, prefer
+\`jj git remote list\`; fall back to raw git only if needed:
 
 \`\`\`bash
-git remote get-url origin 2>/dev/null
+jj git remote list 2>/dev/null || git remote get-url origin 2>/dev/null
 \`\`\`
 
 - If the URL contains "github.com" → platform is **GitHub**
@@ -22,7 +23,7 @@ git remote get-url origin 2>/dev/null
 - Otherwise, check CLI availability:
   - \`gh auth status 2>/dev/null\` succeeds → platform is **GitHub** (covers GitHub Enterprise)
   - \`glab auth status 2>/dev/null\` succeeds → platform is **GitLab** (covers self-hosted)
-  - Neither → **unknown** (use git-native commands only)
+  - Neither → **unknown** (use jj-native commands when available; raw git fallback only if needed)
 
 Determine which branch this PR/MR targets, or the repo's default branch if no
 PR/MR exists. Use the result as "the base branch" in all subsequent steps.
@@ -35,16 +36,17 @@ PR/MR exists. Use the result as "the base branch" in all subsequent steps.
 1. \`glab mr view -F json 2>/dev/null\` and extract the \`target_branch\` field — if succeeds, use it
 2. \`glab repo view -F json 2>/dev/null\` and extract the \`default_branch\` field — if succeeds, use it
 
-**Git-native fallback (if unknown platform, or CLI commands fail):**
-1. \`git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||'\`
-2. If that fails: \`git rev-parse --verify origin/main 2>/dev/null\` → use \`main\`
-3. If that fails: \`git rev-parse --verify origin/master 2>/dev/null\` → use \`master\`
+**jj-native fallback (if unknown platform, or CLI commands fail):**
+1. \`jj log -r 'trunk()' --no-graph -T 'bookmarks.join(",")' 2>/dev/null | cut -d, -f1\`
+2. If that fails: \`jj log -r 'main@origin' --no-graph -T '"main"' 2>/dev/null\` → use \`main\`
+3. If that fails: \`jj log -r 'master@origin' --no-graph -T '"master"' 2>/dev/null\` → use \`master\`
+4. Raw git fallback if the repo is not using jj: \`git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||'\`
 
 If all fail, fall back to \`main\`.
 
-Print the detected base branch name. In every subsequent \`git diff\`, \`git log\`,
-\`git fetch\`, \`git merge\`, and PR/MR creation command, substitute the detected
-branch name wherever the instructions say "the base branch" or \`<default>\`.
+Print the detected base branch name. In every subsequent jj command, substitute
+the detected branch name wherever the instructions say "the base branch" or
+\`<default>\`. Use \`<base>@origin\` for remote-bookmark revsets.
 
 ---`;
 }
@@ -95,8 +97,8 @@ This is the **primary mode** for developers verifying their work. When the user 
 
 1. **Analyze the branch diff** to understand what changed:
    \`\`\`bash
-   git diff main...HEAD --name-only
-   git log main..HEAD --oneline
+   jj diff --from main@origin --to @ --name-only
+   jj log -r 'main@origin..@' --no-graph
    \`\`\`
 
 2. **Identify affected pages/routes** from the changed files:
@@ -379,13 +381,13 @@ export function generateChangelogWorkflow(_ctx: TemplateContext): string {
 
 2. **First, enumerate every commit on the branch:**
    \`\`\`bash
-   git log <base>..HEAD --oneline
+   jj log -r '<base>@origin..@' --no-graph
    \`\`\`
    Copy the full list. Count the commits. You will use this as a checklist.
 
 3. **Read the full diff** to understand what each commit actually changed:
    \`\`\`bash
-   git diff <base>...HEAD
+   jj diff --from <base>@origin --to @ --git
    \`\`\`
 
 4. **Group commits by theme** before writing anything. Common themes:

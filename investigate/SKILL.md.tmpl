@@ -85,7 +85,7 @@ Gather context before forming any hypothesis.
 
 3. **Check recent changes:**
    ```bash
-   git log --oneline -20 -- <affected-files>
+   jj log -n 20 --no-graph -- <affected-files>
    ```
    Was this working before? What changed? A regression means the root cause is in the diff.
 
@@ -154,7 +154,7 @@ Check if this bug matches a known pattern:
 
 Also check:
 - `TODOS.md` for related known issues
-- `git log` for prior fixes in the same area — **recurring bugs in the same files are an architectural smell**, not a coincidence
+- `jj log` for prior fixes in the same area — **recurring bugs in the same files are an architectural smell**, not a coincidence
 
 **External pattern search:** If the bug doesn't match a known pattern above, WebSearch for:
 - "{framework} {generic error type}" — **sanitize first:** strip hostnames, IPs, file paths, SQL, customer data. Search the error category, not the raw message.

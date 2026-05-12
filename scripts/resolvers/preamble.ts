@@ -54,6 +54,7 @@ import { generateCompletenessSection } from './preamble/generate-completeness-se
 import { generateConfusionProtocol } from './preamble/generate-confusion-protocol';
 import { generateContinuousCheckpoint } from './preamble/generate-continuous-checkpoint';
 import { generateContextHealth } from './preamble/generate-context-health';
+import { generateVcsGuidance } from './preamble/generate-vcs-guidance';
 
 // Tier 3+ repo mode + search
 import { generateRepoModeSection } from './preamble/generate-repo-mode-section';
@@ -108,6 +109,7 @@ export function generatePreamble(ctx: TemplateContext): string {
     generateVoiceDirective(tier),
     ...(tier >= 2 ? [
       generateContextRecovery(ctx),
+      generateVcsGuidance(),
       generateWritingStyle(ctx),
       generateCompletenessSection(),
       generateConfusionProtocol(),

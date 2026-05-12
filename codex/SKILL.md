@@ -35,7 +35,8 @@ _SESSIONS=$(find ~/.gstack/sessions -mmin -120 -type f 2>/dev/null | wc -l | tr 
 find ~/.gstack/sessions -mmin +120 -type f -exec rm {} + 2>/dev/null || true
 _PROACTIVE=$(~/.claude/skills/gstack/bin/gstack-config get proactive 2>/dev/null || echo "true")
 _PROACTIVE_PROMPTED=$([ -f ~/.gstack/.proactive-prompted ] && echo "yes" || echo "no")
-_BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
+_BRANCH=$(jj log -r @ --no-graph -T 'bookmarks.join(",")' 2>/dev/null)
+[ -z "$_BRANCH" ] && _BRANCH=$(jj log -r @ --no-graph -T 'change_id.short()' 2>/dev/null || git branch --show-current 2>/dev/null || echo "unknown")
 echo "BRANCH: $_BRANCH"
 _SKILL_PREFIX=$(~/.claude/skills/gstack/bin/gstack-config get skill_prefix 2>/dev/null || echo "false")
 echo "PROACTIVE: $_PROACTIVE"
@@ -59,7 +60,7 @@ _QUESTION_TUNING=$(~/.claude/skills/gstack/bin/gstack-config get question_tuning
 echo "QUESTION_TUNING: $_QUESTION_TUNING"
 mkdir -p ~/.gstack/analytics
 if [ "$_TEL" != "off" ]; then
-echo '{"skill":"codex","ts":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","repo":"'$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null || echo "unknown")'"}'  >> ~/.gstack/analytics/skill-usage.jsonl 2>/dev/null || true
+echo '{"skill":"codex","ts":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","repo":"'$(basename "$(jj root 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null || echo "unknown")'"}'  >> ~/.gstack/analytics/skill-usage.jsonl 2>/dev/null || true
 fi
 for _PF in $(find ~/.gstack/analytics -maxdepth 1 -name '.pending-*' 2>/dev/null); do
   if [ -f "$_PF" ]; then
@@ -234,7 +235,7 @@ Key routing rules:
 - Resume context → invoke /context-restore
 ```
 
-Then commit the change: `git add CLAUDE.md && git commit -m "chore: add gstack skill routing rules to CLAUDE.md"`
+Then commit the change: `jj commit CLAUDE.md -m "chore: add gstack skill routing rules to CLAUDE.md"`
 
 If B: run `~/.claude/skills/gstack/bin/gstack-config set routing_declined true` and say they can re-enable with `gstack-config set routing_declined false`.
 
@@ -250,10 +251,10 @@ Options:
 - B) No, I'll handle it myself
 
 If A:
-1. Run `git rm -r .claude/skills/gstack/`
+1. Remove the vendored directory from the working copy: `rm -rf .claude/skills/gstack/`
 2. Run `echo '.claude/skills/gstack/' >> .gitignore`
 3. Run `~/.claude/skills/gstack/bin/gstack-team-init required` (or `optional`)
-4. Run `git add .claude/ .gitignore CLAUDE.md && git commit -m "chore: migrate gstack from vendored to team mode"`
+4. Run `jj commit .claude/ .gitignore CLAUDE.md -m "chore: migrate gstack from vendored to team mode"`
 5. Tell the user: "Done. Each developer now runs: `cd ~/.claude/skills/gstack && ./setup --team`"
 
 If B: say "OK, you're on your own to keep the vendored copy up to date."
@@ -369,7 +370,7 @@ _BRAIN_CONFIG_BIN="~/.claude/skills/gstack/bin/gstack-config"
 
 # /sync-gbrain context-load: teach the agent to use gbrain when it's available.
 # Per-worktree pin: post-spike redesign uses kubectl-style `.gbrain-source` in the
-# git toplevel to scope queries. Look for the pin in the worktree (not a global
+# VCS toplevel to scope queries. Look for the pin in the worktree (not a global
 # state file) so that opening worktree B without a pin doesn't claim "indexed"
 # just because worktree A was synced. Empty string when gbrain is not
 # configured (zero context cost for non-gbrain users).
@@ -378,7 +379,7 @@ if [ -f "$_GBRAIN_CONFIG" ] && command -v gbrain >/dev/null 2>&1; then
   _GBRAIN_VERSION_OK=$(gbrain --version 2>/dev/null | grep -c '^gbrain ' || echo 0)
   if [ "$_GBRAIN_VERSION_OK" -gt 0 ] 2>/dev/null; then
     _GBRAIN_PIN_PATH=""
-    _REPO_TOP=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+    _REPO_TOP=$(jj root 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null || echo "")
     if [ -n "$_REPO_TOP" ] && [ -f "$_REPO_TOP/.gbrain-source" ]; then
       _GBRAIN_PIN_PATH="$_REPO_TOP/.gbrain-source"
     fi
@@ -539,6 +540,24 @@ fi
 
 If artifacts are listed, read the newest useful one. If `LAST_SESSION` or `LATEST_CHECKPOINT` appears, give a 2-sentence welcome back summary. If `RECENT_PATTERN` clearly implies a next skill, suggest it once.
 
+## Version Control Preference
+
+This fork is configured for a Jujutsu-first workflow. For project source-control work, prefer `jj` whenever a repo has `.jj/` or `jj root` succeeds.
+
+Translate git-oriented workflow steps to these jj equivalents:
+- Inspect state: `jj status`
+- Current root: `jj root`
+- Current change id/commit id: `jj log -r @ --no-graph -T 'change_id.short() ++ " " ++ commit_id.short() ++ "\n"'`
+- Fetch base branch: `jj git fetch --remote origin --branch <base>`
+- Diff against base: `jj diff --from <base>@origin --to @`; add `--stat`, `--name-only`, or `--git` as needed
+- Log branch work: `jj log -r '<base>@origin..@' --no-graph`
+- Commit selected paths: `jj commit <paths> -m "<message>"`; do not stage with `git add`
+- Restore paths: `jj restore <paths>`
+- Rebase onto the latest base: `jj rebase -d <base>@origin`
+- Push: `jj git push --remote origin`, or `jj git push --remote origin --bookmark <bookmark>` when pushing a named bookmark
+
+Use raw `git` only when the step is explicitly about Git hosting/install plumbing, GitHub/GitLab CLI metadata, gstack's own private git-backed artifact sync, or a tool that has no practical jj equivalent.
+
 ## Writing Style (skip entirely if `EXPLAIN_LEVEL: terse` appears in the preamble echo OR the user's current message explicitly requests terse / no-explanations output)
 
 Applies to AskUserQuestion, user replies, and findings. AskUserQuestion Format is structure; this is prose quality.
@@ -659,7 +678,7 @@ Skill: </skill-name-if-running>
 [/gstack-context]
 ```
 
-Rules: stage only intentional files, NEVER `git add -A`, do not commit broken tests or mid-edit state, and push only if `CHECKPOINT_PUSH` is `"true"`. Do not announce each WIP commit.
+Rules: commit only intentional paths with `jj commit <paths> -m "WIP: ..."`, never stage broad changes with `git add -A` or `git add .`, do not commit broken tests or mid-edit state, and push only if `CHECKPOINT_PUSH` is `"true"`. Do not announce each WIP commit.
 
 `/context-restore` reads `[gstack-context]`; `/ship` squashes WIP commits into clean commits.
 
@@ -669,7 +688,7 @@ If `CHECKPOINT_MODE` is `"explicit"`: ignore this section unless a skill or user
 
 During long-running skill sessions, periodically write a brief `[PROGRESS]` summary: done, next, surprises.
 
-If you are looping on the same diagnostic, same file, or failed fix variants, STOP and reassess. Consider escalation or /context-save. Progress summaries must NEVER mutate git state.
+If you are looping on the same diagnostic, same file, or failed fix variants, STOP and reassess. Consider escalation or /context-save. Progress summaries must NEVER mutate VCS state.
 
 ## Question Tuning (skip entirely if `QUESTION_TUNING: false`)
 
@@ -706,7 +725,7 @@ Before building anything unfamiliar, **search first.** See `~/.claude/skills/gst
 
 **Eureka:** When first-principles reasoning contradicts conventional wisdom, name it and log:
 ```bash
-jq -n --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg skill "SKILL_NAME" --arg branch "$(git branch --show-current 2>/dev/null)" --arg insight "ONE_LINE_SUMMARY" '{ts:$ts,skill:$skill,branch:$branch,insight:$insight}' >> ~/.gstack/analytics/eureka.jsonl 2>/dev/null || true
+jq -n --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg skill "SKILL_NAME" --arg branch "$(jj log -r @ --no-graph -T 'bookmarks.join(",")' 2>/dev/null)" --arg insight "ONE_LINE_SUMMARY" '{ts:$ts,skill:$skill,branch:$branch,insight:$insight}' >> ~/.gstack/analytics/eureka.jsonl 2>/dev/null || true
 ```
 
 ## Completion Status Protocol
@@ -743,7 +762,7 @@ _TEL_END=$(date +%s)
 _TEL_DUR=$(( _TEL_END - _TEL_START ))
 rm -f ~/.gstack/analytics/.pending-"$_SESSION_ID" 2>/dev/null || true
 # Session timeline: record skill completion (local-only, never sent anywhere)
-~/.claude/skills/gstack/bin/gstack-timeline-log '{"skill":"SKILL_NAME","event":"completed","branch":"'$(git branch --show-current 2>/dev/null || echo unknown)'","outcome":"OUTCOME","duration_s":"'"$_TEL_DUR"'","session":"'"$_SESSION_ID"'"}' 2>/dev/null || true
+~/.claude/skills/gstack/bin/gstack-timeline-log '{"skill":"SKILL_NAME","event":"completed","branch":"'$(jj log -r @ --no-graph -T 'bookmarks.join(",")' 2>/dev/null || echo unknown)'","outcome":"OUTCOME","duration_s":"'"$_TEL_DUR"'","session":"'"$_SESSION_ID"'"}' 2>/dev/null || true
 # Local analytics (gated on telemetry setting)
 if [ "$_TEL" != "off" ]; then
 echo '{"skill":"SKILL_NAME","duration_s":"'"$_TEL_DUR"'","outcome":"OUTCOME","browse":"USED_BROWSE","session":"'"$_SESSION_ID"'","ts":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' >> ~/.gstack/analytics/skill-usage.jsonl 2>/dev/null || true
@@ -766,10 +785,11 @@ PLAN MODE EXCEPTION — always allowed (it's the plan file).
 
 ## Step 0: Detect platform and base branch
 
-First, detect the git hosting platform from the remote URL:
+First, detect the Git hosting platform from the remote URL. In jj repos, prefer
+`jj git remote list`; fall back to raw git only if needed:
 
 ```bash
-git remote get-url origin 2>/dev/null
+jj git remote list 2>/dev/null || git remote get-url origin 2>/dev/null
 ```
 
 - If the URL contains "github.com" → platform is **GitHub**
@@ -777,7 +797,7 @@ git remote get-url origin 2>/dev/null
 - Otherwise, check CLI availability:
   - `gh auth status 2>/dev/null` succeeds → platform is **GitHub** (covers GitHub Enterprise)
   - `glab auth status 2>/dev/null` succeeds → platform is **GitLab** (covers self-hosted)
-  - Neither → **unknown** (use git-native commands only)
+  - Neither → **unknown** (use jj-native commands when available; raw git fallback only if needed)
 
 Determine which branch this PR/MR targets, or the repo's default branch if no
 PR/MR exists. Use the result as "the base branch" in all subsequent steps.
@@ -790,16 +810,17 @@ PR/MR exists. Use the result as "the base branch" in all subsequent steps.
 1. `glab mr view -F json 2>/dev/null` and extract the `target_branch` field — if succeeds, use it
 2. `glab repo view -F json 2>/dev/null` and extract the `default_branch` field — if succeeds, use it
 
-**Git-native fallback (if unknown platform, or CLI commands fail):**
-1. `git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||'`
-2. If that fails: `git rev-parse --verify origin/main 2>/dev/null` → use `main`
-3. If that fails: `git rev-parse --verify origin/master 2>/dev/null` → use `master`
+**jj-native fallback (if unknown platform, or CLI commands fail):**
+1. `jj log -r 'trunk()' --no-graph -T 'bookmarks.join(",")' 2>/dev/null | cut -d, -f1`
+2. If that fails: `jj log -r 'main@origin' --no-graph -T '"main"' 2>/dev/null` → use `main`
+3. If that fails: `jj log -r 'master@origin' --no-graph -T '"master"' 2>/dev/null` → use `master`
+4. Raw git fallback if the repo is not using jj: `git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||'`
 
 If all fail, fall back to `main`.
 
-Print the detected base branch name. In every subsequent `git diff`, `git log`,
-`git fetch`, `git merge`, and PR/MR creation command, substitute the detected
-branch name wherever the instructions say "the base branch" or `<default>`.
+Print the detected base branch name. In every subsequent jj command, substitute
+the detected branch name wherever the instructions say "the base branch" or
+`<default>`. Use `<base>@origin` for remote-bookmark revsets.
 
 ---
 
@@ -889,7 +910,7 @@ Parse the user's input to determine which mode to run:
 2. `/codex challenge` or `/codex challenge <focus>` — **Challenge mode** (Step 2B)
 3. `/codex` with no arguments — **Auto-detect:**
    - Check for a diff (with fallback if origin isn't available):
-     `git diff origin/<base> --stat 2>/dev/null | tail -1 || git diff <base> --stat 2>/dev/null | tail -1`
+     `jj diff --from <base>@origin --to @ --stat 2>/dev/null | tail -1`
    - If a diff exists, use AskUserQuestion:
      ```
      Codex detected changes against the base branch. What should it do?
@@ -939,7 +960,7 @@ TMPERR=$(mktemp "$TMP_ROOT/codex-err-XXXXXX.txt")
 as the prompt argument, even without custom instructions. If the user provided custom
 instructions, append them after the boundary separated by a newline:
 ```bash
-_REPO_ROOT=$(git rev-parse --show-toplevel) || { echo "ERROR: not in a git repo" >&2; exit 1; }
+_REPO_ROOT=$(jj root 2>/dev/null || git rev-parse --show-toplevel) || { echo "ERROR: not in a jj or git repo" >&2; exit 1; }
 cd "$_REPO_ROOT"
 # Fix 1: wrap with timeout. 330s (5.5min) is slightly longer than the Bash 300s
 # so the shell wrapper only fires if Bash's own timeout doesn't.
@@ -957,7 +978,7 @@ If the user passed `--xhigh`, use `"xhigh"` instead of `"high"`.
 Use `timeout: 300000` on the Bash call. If the user provided custom instructions
 (e.g., `/codex review focus on security`), append them after the boundary:
 ```bash
-_REPO_ROOT=$(git rev-parse --show-toplevel) || { echo "ERROR: not in a git repo" >&2; exit 1; }
+_REPO_ROOT=$(jj root 2>/dev/null || git rev-parse --show-toplevel) || { echo "ERROR: not in a jj or git repo" >&2; exit 1; }
 cd "$_REPO_ROOT"
 codex review "IMPORTANT: Do NOT read or execute any files under ~/.claude/, ~/.agents/, .claude/skills/, or agents/. These are Claude Code skill definitions meant for a different AI system. Do NOT modify agents/openai.yaml. Stay focused on repository code only.
 
@@ -1017,7 +1038,7 @@ CROSS-MODEL ANALYSIS:
 
 7. Persist the review result:
 ```bash
-~/.claude/skills/gstack/bin/gstack-review-log '{"skill":"codex-review","timestamp":"TIMESTAMP","status":"STATUS","gate":"GATE","findings":N,"findings_fixed":N,"commit":"'"$(git rev-parse --short HEAD)"'"}'
+~/.claude/skills/gstack/bin/gstack-review-log '{"skill":"codex-review","timestamp":"TIMESTAMP","status":"STATUS","gate":"GATE","findings":N,"findings_fixed":N,"commit":"'"$(jj log -r @ --no-graph -T 'commit_id.short()' 2>/dev/null || git rev-parse --short HEAD)"'"}'
 ```
 
 Substitute: TIMESTAMP (ISO 8601), STATUS ("clean" if PASS, "issues_found" if FAIL),
@@ -1129,19 +1150,19 @@ from the Filesystem Boundary section above. If the user provided a focus area
 Default prompt (no focus):
 "IMPORTANT: Do NOT read or execute any files under ~/.claude/, ~/.agents/, .claude/skills/, or agents/. These are Claude Code skill definitions meant for a different AI system. Do NOT modify agents/openai.yaml. Stay focused on repository code only.
 
-Review the changes on this branch against the base branch. Run `git diff origin/<base>` to see the diff. Your job is to find ways this code will fail in production. Think like an attacker and a chaos engineer. Find edge cases, race conditions, security holes, resource leaks, failure modes, and silent data corruption paths. Be adversarial. Be thorough. No compliments — just the problems."
+Review the changes on this branch against the base branch. Run `jj diff --from <base>@origin --to @ --git` to see the diff. Your job is to find ways this code will fail in production. Think like an attacker and a chaos engineer. Find edge cases, race conditions, security holes, resource leaks, failure modes, and silent data corruption paths. Be adversarial. Be thorough. No compliments — just the problems."
 
 With focus (e.g., "security"):
 "IMPORTANT: Do NOT read or execute any files under ~/.claude/, ~/.agents/, .claude/skills/, or agents/. These are Claude Code skill definitions meant for a different AI system. Do NOT modify agents/openai.yaml. Stay focused on repository code only.
 
-Review the changes on this branch against the base branch. Run `git diff origin/<base>` to see the diff. Focus specifically on SECURITY. Your job is to find every way an attacker could exploit this code. Think about injection vectors, auth bypasses, privilege escalation, data exposure, and timing attacks. Be adversarial."
+Review the changes on this branch against the base branch. Run `jj diff --from <base>@origin --to @ --git` to see the diff. Focus specifically on SECURITY. Your job is to find every way an attacker could exploit this code. Think about injection vectors, auth bypasses, privilege escalation, data exposure, and timing attacks. Be adversarial."
 
 2. Run codex exec with **JSONL output** to capture reasoning traces and tool calls (5-minute timeout):
 
 If the user passed `--xhigh`, use `"xhigh"` instead of `"high"`.
 
 ```bash
-_REPO_ROOT=$(git rev-parse --show-toplevel) || { echo "ERROR: not in a git repo" >&2; exit 1; }
+_REPO_ROOT=$(jj root 2>/dev/null || git rev-parse --show-toplevel) || { echo "ERROR: not in a jj or git repo" >&2; exit 1; }
 PYTHON_CMD=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || true)
 if [ -z "$PYTHON_CMD" ]; then
   echo "ERROR: Python 3 is required to parse Codex JSON output. Install python3 or python and retry." >&2
@@ -1292,7 +1313,7 @@ If the user passed `--xhigh`, use `"xhigh"` instead of `"medium"`.
 
 For a **new session:**
 ```bash
-_REPO_ROOT=$(git rev-parse --show-toplevel) || { echo "ERROR: not in a git repo" >&2; exit 1; }
+_REPO_ROOT=$(jj root 2>/dev/null || git rev-parse --show-toplevel) || { echo "ERROR: not in a jj or git repo" >&2; exit 1; }
 PYTHON_CMD=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || true)
 if [ -z "$PYTHON_CMD" ]; then
   echo "ERROR: Python 3 is required to parse Codex JSON output. Install python3 or python and retry." >&2
@@ -1339,7 +1360,7 @@ fi
 
 For a **resumed session** (user chose "Continue"):
 ```bash
-_REPO_ROOT=$(git rev-parse --show-toplevel) || { echo "ERROR: not in a git repo" >&2; exit 1; }
+_REPO_ROOT=$(jj root 2>/dev/null || git rev-parse --show-toplevel) || { echo "ERROR: not in a jj or git repo" >&2; exit 1; }
 PYTHON_CMD=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || true)
 if [ -z "$PYTHON_CMD" ]; then
   echo "ERROR: Python 3 is required to parse Codex JSON output. Install python3 or python and retry." >&2

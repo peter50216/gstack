@@ -51,7 +51,7 @@ E2E tests stream progress in real-time (tool-by-tool via `--output-format stream
 against the previous run.
 
 **Diff-based test selection:** `test:evals` and `test:e2e` auto-select tests based
-on `git diff` against the base branch. Each test declares its file dependencies in
+on `jj diff` against the base branch. Each test declares its file dependencies in
 `test/helpers/touchfiles.ts`. Changes to global touchfiles (session-runner, eval-store,
 touchfiles.ts itself) trigger all tests. Use `EVALS_ALL=1` or the `:all` script
 variants to force all tests. Run `eval:select` to preview which tests would run.
@@ -355,12 +355,12 @@ The `browse/dist/` and `design/dist/` directories contain compiled Bun binaries
 do NOT work on Linux, Windows, or Intel Macs. The `./setup` script already builds
 from source for every platform, so the checked-in binaries are redundant. They are
 tracked by git due to a historical mistake and should eventually be removed with
-`git rm --cached`.
+`jj file untrack`.
 
-**NEVER stage or commit these files.** They show up as modified in `git status`
-because they're tracked despite `.gitignore` — ignore them. When staging files,
-always use specific filenames (`git add file1 file2`) — never `git add .` or
-`git add -A`, which will accidentally include the binaries.
+**NEVER commit these files.** They show up as modified in `jj status`
+because they're tracked despite `.gitignore` — ignore them. When committing,
+always use specific filenames (`jj commit file1 file2 -m "..."`) and never a broad
+catch-all commit that will accidentally include the binaries.
 
 ## Commit style
 
@@ -622,7 +622,7 @@ Voice rules for the release summary:
 Source material:
 - CHANGELOG previous entry for prior context.
 - Benchmark files or `/retro` output for headline numbers.
-- Recent commits (`git log <prev-version>..HEAD --oneline`) for what shipped.
+- Recent changes (`jj log -r '<prev-version>..@' --no-graph`) for what shipped.
 - Don't make up numbers. If a metric isn't in a benchmark or production data,
   don't include it. Say "no measurement yet" if asked.
 
@@ -754,7 +754,7 @@ Repeat for each skill: `gstack-openclaw-ceo-review`, `gstack-openclaw-investigat
 The active skill lives at `~/.claude/skills/gstack/`. After making changes:
 
 1. Push your branch
-2. Fetch and reset in the skill directory: `cd ~/.claude/skills/gstack && git fetch origin && git reset --hard origin/main`
+2. Fetch and rebase in the skill directory: `cd ~/.claude/skills/gstack && jj git fetch --remote origin --branch main && jj rebase -d main@origin`
 3. Rebuild: `cd ~/.claude/skills/gstack && bun run build`
 
 Or copy the binaries directly:

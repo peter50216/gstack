@@ -240,7 +240,7 @@ Append one JSONL line to `~/.gstack/projects/$SLUG/health-history.jsonl`:
 
 Fields:
 - `ts` -- ISO 8601 timestamp
-- `branch` -- current git branch
+- `branch` -- current jj bookmark/change
 - `score` -- composite score (one decimal)
 - `typecheck`, `lint`, `test`, `deadcode`, `shell`, `gbrain` -- individual category scores (integer 0-10)
 - `duration_s` -- total time for all tools in seconds

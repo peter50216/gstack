@@ -205,11 +205,11 @@ describe('gstack-team-init', () => {
     expect(result.stderr).toContain('Usage');
   });
 
-  test('errors outside a git repo', () => {
+  test('errors outside a jj or git repo', () => {
     const nonGitDir = mkTmpDir();
     const result = run(`${TEAM_INIT} optional`, { cwd: nonGitDir });
     expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toContain('not in a git repository');
+    expect(result.stderr).toContain('not in a jj or git repository');
     fs.rmSync(nonGitDir, { recursive: true, force: true });
   });
 

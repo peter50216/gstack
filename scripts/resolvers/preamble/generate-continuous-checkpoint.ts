@@ -20,7 +20,7 @@ Skill: </skill-name-if-running>
 [/gstack-context]
 \`\`\`
 
-Rules: stage only intentional files, NEVER \`git add -A\`, do not commit broken tests or mid-edit state, and push only if \`CHECKPOINT_PUSH\` is \`"true"\`. Do not announce each WIP commit.
+Rules: commit only intentional paths with \`jj commit <paths> -m "WIP: ..."\`, never stage broad changes with \`git add -A\` or \`git add .\`, do not commit broken tests or mid-edit state, and push only if \`CHECKPOINT_PUSH\` is \`"true"\`. Do not announce each WIP commit.
 
 \`/context-restore\` reads \`[gstack-context]\`; \`/ship\` squashes WIP commits into clean commits.
 

@@ -19,13 +19,12 @@ if [ "$MODE" != "optional" ] && [ "$MODE" != "required" ]; then
   exit 1
 fi
 
-# Must be in a git repo
-if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
-  echo "Error: not in a git repository. Run from your project root." >&2
+# Must be in a jj or git repo
+if ! REPO_ROOT=$(jj root 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null); then
+  echo "Error: not in a jj or git repository. Run from your project root." >&2
   exit 1
 fi
 
-REPO_ROOT=$(git rev-parse --show-toplevel)
 CLAUDE_MD="$REPO_ROOT/CLAUDE.md"
 GENERATED=()
 
@@ -35,7 +34,6 @@ if [ -d "$REPO_ROOT/.claude/skills/gstack" ] && [ ! -L "$REPO_ROOT/.claude/skill
   if [ -f "$REPO_ROOT/.claude/skills/gstack/VERSION" ] || [ -d "$REPO_ROOT/.claude/skills/gstack/.git" ]; then
     echo "  Found vendored gstack copy at $REPO_ROOT/.claude/skills/gstack"
     echo "  Team mode uses the global install — removing vendored copy..."
-    ( cd "$REPO_ROOT" && git rm -r --cached .claude/skills/gstack/ 2>/dev/null ) || true
     if [ -f "$REPO_ROOT/.gitignore" ]; then
       if ! grep -qF '.claude/skills/gstack/' "$REPO_ROOT/.gitignore" 2>/dev/null; then
         echo '.claude/skills/gstack/' >> "$REPO_ROOT/.gitignore"
@@ -43,6 +41,7 @@ if [ -d "$REPO_ROOT/.claude/skills/gstack" ] && [ ! -L "$REPO_ROOT/.claude/skill
     else
       echo '.claude/skills/gstack/' > "$REPO_ROOT/.gitignore"
     fi
+    ( cd "$REPO_ROOT" && jj file untrack .claude/skills/gstack/ 2>/dev/null ) || ( cd "$REPO_ROOT" && git rm -r --cached .claude/skills/gstack/ 2>/dev/null ) || true
     rm -rf "$REPO_ROOT/.claude/skills/gstack"
     GENERATED+=(".gitignore")
     echo "  Removed vendored copy and added .claude/skills/gstack/ to .gitignore"
@@ -58,7 +57,7 @@ This project uses [gstack](https://github.com/garrytan/gstack) for AI-assisted w
 Install it for the best experience:
 
 ```bash
-git clone --depth 1 https://github.com/garrytan/gstack.git ~/.claude/skills/gstack
+jj git clone --colocate https://github.com/garrytan/gstack.git ~/.claude/skills/gstack
 cd ~/.claude/skills/gstack && ./setup --team
 ```
 
@@ -78,7 +77,7 @@ If GSTACK_MISSING: STOP. Do not proceed. Tell the user:
 > gstack is required for all AI-assisted work in this repo.
 > Install it:
 > ```bash
-> git clone --depth 1 https://github.com/garrytan/gstack.git ~/.claude/skills/gstack
+> jj git clone --colocate https://github.com/garrytan/gstack.git ~/.claude/skills/gstack
 > cd ~/.claude/skills/gstack && ./setup --team
 > ```
 > Then restart your AI coding tool.
@@ -122,7 +121,7 @@ BLOCKED: gstack is not installed globally.
 gstack is required for AI-assisted work in this repo.
 
 Install it:
-  git clone --depth 1 https://github.com/garrytan/gstack.git ~/.claude/skills/gstack
+  jj git clone --colocate https://github.com/garrytan/gstack.git ~/.claude/skills/gstack
   cd ~/.claude/skills/gstack && ./setup --team
 
 Then restart your AI coding tool.
@@ -183,10 +182,9 @@ echo "Team mode ($MODE) initialized."
 echo ""
 if [ ${#GENERATED[@]} -gt 0 ]; then
   echo "Commit the generated files:"
-  echo "  git add ${GENERATED[*]}"
-  echo "  git commit -m \"chore: require gstack for AI-assisted work\""
+  echo "  jj commit ${GENERATED[*]} -m \"chore: require gstack for AI-assisted work\""
 fi
 echo ""
 echo "Each developer then runs:"
-echo "  git clone --depth 1 https://github.com/garrytan/gstack.git ~/.claude/skills/gstack"
+echo "  jj git clone --colocate https://github.com/garrytan/gstack.git ~/.claude/skills/gstack"
 echo "  cd ~/.claude/skills/gstack && ./setup --team"

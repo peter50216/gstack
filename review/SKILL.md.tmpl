@@ -36,9 +36,9 @@ You are running the `/review` workflow. Analyze the current branch's diff agains
 
 ## Step 1: Check branch
 
-1. Run `git branch --show-current` to get the current branch.
+1. Run `jj log -r @ --no-graph -T 'bookmarks.join(",") ++ change_id.short() ++ "\n"'` to identify the current bookmark/change.
 2. If on the base branch, output: **"Nothing to review — you're on the base branch or have no changes against it."** and stop.
-3. Run `git fetch origin <base> --quiet && git diff origin/<base> --stat` to check if there's a diff. If no diff, output the same message and stop.
+3. Run `jj git fetch --remote origin --branch <base> && jj diff --from <base>@origin --to @ --stat` to check if there's a diff. If no diff, output the same message and stop.
 
 ---
 
@@ -69,19 +69,19 @@ Read `.claude/skills/review/greptile-triage.md` and follow the fetch, filter, cl
 Fetch the latest base branch to avoid false positives from stale local state:
 
 ```bash
-git fetch origin <base> --quiet
+jj git fetch --remote origin --branch <base>
 ```
 
-Run `git diff origin/<base>` to get the full diff. This includes both committed and uncommitted changes against the latest base branch.
+Run `jj diff --from <base>@origin --to @ --git` to get the full diff. This includes both committed changes and the current working-copy change against the latest base branch.
 
 ## Step 3.4: Workspace-aware queue status (advisory)
 
 Check whether this PR's claimed VERSION still points at a free slot in the queue. Advisory only — never blocks review; just informs the reviewer about landing-order risk.
 
 ```bash
-BRANCH_VERSION=$(git show HEAD:VERSION 2>/dev/null | tr -d '\r\n[:space:]' || echo "")
+BRANCH_VERSION=$(jj file show VERSION 2>/dev/null | tr -d '\r\n[:space:]' || echo "")
 BASE_BRANCH=$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || echo main)
-BASE_VERSION=$(git show origin/$BASE_BRANCH:VERSION 2>/dev/null | tr -d '\r\n[:space:]' || echo "")
+BASE_VERSION=$(jj file show -r "$BASE_BRANCH@origin" VERSION 2>/dev/null | tr -d '\r\n[:space:]' || echo "")
 QUEUE_JSON=$(bun run bin/gstack-next-version \
   --base "$BASE_BRANCH" \
   --bump patch \
@@ -281,7 +281,7 @@ Substitute:
 - `quality_score` = the PR Quality Score computed in Step 4.6 (e.g., 7.5). If specialists were skipped (small diff), use `10.0`
 - `specialists` = the per-specialist stats object compiled in Step 4.6. Each specialist that was considered gets an entry: `{"dispatched":true/false,"findings":N,"critical":N,"informational":N}` if dispatched, or `{"dispatched":false,"reason":"scope|gated"}` if skipped. Include Design specialist. Example: `{"testing":{"dispatched":true,"findings":2,"critical":0,"informational":2},"security":{"dispatched":false,"reason":"scope"}}`
 - `findings` = array of per-finding records from Step 5. For each finding (from critical pass and specialists), include: `{"fingerprint":"path:line:category","severity":"CRITICAL|INFORMATIONAL","action":"ACTION"}`. ACTION is `"auto-fixed"` (Step 5b), `"fixed"` (user approved in Step 5d), or `"skipped"` (user chose Skip in Step 5c). Suppressed findings from Step 5.0 are NOT included (they were already recorded in a prior review entry).
-- `COMMIT` = output of `git rev-parse --short HEAD`
+- `COMMIT` = output of `jj log -r @ --no-graph -T 'commit_id.short()'`
 
 {{LEARNINGS_LOG}}
 

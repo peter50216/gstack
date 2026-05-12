@@ -81,17 +81,17 @@ Continue with the current skill.
 ### Step 2: Detect install type
 
 ```bash
-if [ -d "$HOME/.claude/skills/gstack/.git" ]; then
-  INSTALL_TYPE="global-git"
+if [ -d "$HOME/.claude/skills/gstack/.jj" ] || [ -d "$HOME/.claude/skills/gstack/.git" ]; then
+  INSTALL_TYPE="global-vcs"
   INSTALL_DIR="$HOME/.claude/skills/gstack"
-elif [ -d "$HOME/.gstack/repos/gstack/.git" ]; then
-  INSTALL_TYPE="global-git"
+elif [ -d "$HOME/.gstack/repos/gstack/.jj" ] || [ -d "$HOME/.gstack/repos/gstack/.git" ]; then
+  INSTALL_TYPE="global-vcs"
   INSTALL_DIR="$HOME/.gstack/repos/gstack"
-elif [ -d ".claude/skills/gstack/.git" ]; then
-  INSTALL_TYPE="local-git"
+elif [ -d ".claude/skills/gstack/.jj" ] || [ -d ".claude/skills/gstack/.git" ]; then
+  INSTALL_TYPE="local-vcs"
   INSTALL_DIR=".claude/skills/gstack"
-elif [ -d ".agents/skills/gstack/.git" ]; then
-  INSTALL_TYPE="local-git"
+elif [ -d ".agents/skills/gstack/.jj" ] || [ -d ".agents/skills/gstack/.git" ]; then
+  INSTALL_TYPE="local-vcs"
   INSTALL_DIR=".agents/skills/gstack"
 elif [ -d ".claude/skills/gstack" ]; then
   INSTALL_TYPE="vendored"
@@ -120,23 +120,33 @@ OLD_VERSION=$(cat "$INSTALL_DIR/VERSION" 2>/dev/null || echo "unknown")
 
 Use the install type and directory detected in Step 2:
 
-**For git installs** (global-git, local-git):
+**For VCS installs** (global-vcs, local-vcs):
 ```bash
 cd "$INSTALL_DIR"
-STASH_OUTPUT=$(git stash 2>&1)
-git fetch origin
-git reset --hard origin/main
+if [ -d .jj ] && command -v jj >/dev/null 2>&1; then
+  LOCAL_DIFF=$(jj diff --stat 2>/dev/null || true)
+  if [ -n "$LOCAL_DIFF" ]; then
+    echo "Local changes detected; jj will preserve them in the previous change."
+  fi
+  jj git fetch --remote origin --branch main
+  jj new main@origin
+else
+  STASH_OUTPUT=$(git stash 2>&1)
+  git fetch origin
+  git reset --hard origin/main
+fi
 ./setup
 ```
-If `$STASH_OUTPUT` contains "Saved working directory", warn the user: "Note: local changes were stashed. Run `git stash pop` in the skill directory to restore them."
+If `$STASH_OUTPUT` contains "Saved working directory", warn the user: "Note: local changes were stashed. Run `git stash pop` in the skill directory to restore them." If `$LOCAL_DIFF` is non-empty in a jj install, warn the user: "Note: local changes were preserved in the previous jj change. Run `jj log` in the skill directory if you need them."
 
 **For vendored installs** (vendored, vendored-global):
 ```bash
 PARENT=$(dirname "$INSTALL_DIR")
 TMP_DIR=$(mktemp -d)
-git clone --depth 1 https://github.com/garrytan/gstack.git "$TMP_DIR/gstack"
+jj git clone --colocate https://github.com/garrytan/gstack.git "$TMP_DIR/gstack"
 mv "$INSTALL_DIR" "$INSTALL_DIR.bak"
 mv "$TMP_DIR/gstack" "$INSTALL_DIR"
+rm -rf "$INSTALL_DIR/.jj" "$INSTALL_DIR/.git"
 cd "$INSTALL_DIR" && ./setup
 rm -rf "$INSTALL_DIR.bak" "$TMP_DIR"
 ```
@@ -146,7 +156,7 @@ rm -rf "$INSTALL_DIR.bak" "$TMP_DIR"
 Use the install directory from Step 2. Check if there's also a local vendored copy, and whether team mode is active:
 
 ```bash
-_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
+_ROOT=$(jj root 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null)
 LOCAL_GSTACK=""
 if [ -n "$_ROOT" ] && [ -d "$_ROOT/.claude/skills/gstack" ]; then
   _RESOLVED_LOCAL=$(cd "$_ROOT/.claude/skills/gstack" && pwd -P)
@@ -164,10 +174,10 @@ echo "TEAM_MODE=$_TEAM_MODE"
 
 ```bash
 cd "$_ROOT"
-git rm -r --cached .claude/skills/gstack/ 2>/dev/null || true
 if ! grep -qF '.claude/skills/gstack/' .gitignore 2>/dev/null; then
   echo '.claude/skills/gstack/' >> .gitignore
 fi
+jj file untrack .claude/skills/gstack/ 2>/dev/null || git rm -r --cached .claude/skills/gstack/ 2>/dev/null || true
 rm -rf "$LOCAL_GSTACK"
 ```
 Tell user: "Removed vendored copy at `$LOCAL_GSTACK` (team mode active — global install is the source of truth). Commit the `.gitignore` change when ready."
@@ -176,7 +186,7 @@ Tell user: "Removed vendored copy at `$LOCAL_GSTACK` (team mode active — globa
 ```bash
 mv "$LOCAL_GSTACK" "$LOCAL_GSTACK.bak"
 cp -Rf "$INSTALL_DIR" "$LOCAL_GSTACK"
-rm -rf "$LOCAL_GSTACK/.git"
+rm -rf "$LOCAL_GSTACK/.jj" "$LOCAL_GSTACK/.git"
 cd "$LOCAL_GSTACK" && ./setup
 rm -rf "$LOCAL_GSTACK.bak"
 ```

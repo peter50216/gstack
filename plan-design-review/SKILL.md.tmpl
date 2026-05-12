@@ -112,8 +112,8 @@ Never skip Step 0 or mockup generation (when the designer is available). Mockups
 Before reviewing the plan, gather context:
 
 ```bash
-git log --oneline -15
-git diff <base> --stat
+jj log -n 15 --no-graph
+jj diff --from <base>@origin --to @ --stat
 ```
 
 Then read:
@@ -129,7 +129,7 @@ Map:
 * What prior design reviews exist? (check reviews.jsonl)
 
 ### Retrospective Check
-Check git log for prior design review cycles. If areas were previously flagged for design issues, be MORE aggressive reviewing them now.
+Check jj log for prior design review cycles. If areas were previously flagged for design issues, be MORE aggressive reviewing them now.
 
 ### UI Scope Detection
 Analyze the plan. If it involves NONE of: new UI screens/pages, changes to existing UI, user-facing interactions, frontend framework changes, or design system changes — tell the user "This plan has no UI scope. A design review isn't applicable." and exit early. Don't force design review on a backend change.
@@ -438,7 +438,7 @@ Substitute values from the Completion Summary:
 - **overall_score**: final overall design score after fixes (0-10)
 - **unresolved**: number of unresolved design decisions
 - **decisions_made**: number of design decisions added to the plan
-- **COMMIT**: output of `git rev-parse --short HEAD`
+- **COMMIT**: output of `jj log -r @ --no-graph -T 'commit_id.short()'`
 
 {{REVIEW_DASHBOARD}}
 

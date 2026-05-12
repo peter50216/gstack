@@ -54,7 +54,7 @@ Invoke them by name (e.g., `/office-hours`).
 
 | Skill | What it does |
 |-------|-------------|
-| `/context-save` | Save working context (git state, decisions, remaining work). |
+| `/context-save` | Save working context (VCS state, decisions, remaining work). |
 | `/context-restore` | Resume from a saved context, even across Conductor workspaces. |
 | `/learn` | Manage what gstack learned across sessions. |
 | `/retro` | Weekly retro with per-person breakdowns and shipping streaks. |

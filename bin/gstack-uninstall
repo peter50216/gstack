@@ -7,7 +7,7 @@
 #   gstack-uninstall --keep-state — remove skills but keep ~/.gstack/ data
 #
 # What gets REMOVED:
-#   ~/.claude/skills/gstack       — global Claude skill install (git clone or vendored)
+#   ~/.claude/skills/gstack       — global Claude skill install (VCS clone or vendored)
 #   ~/.claude/skills/{skill}      — per-skill symlinks created by setup
 #   ~/.codex/skills/gstack*       — Codex skill install + per-skill symlinks
 #   ~/.factory/skills/gstack*     — Factory Droid skill install + per-skill symlinks
@@ -38,7 +38,7 @@ fi
 
 GSTACK_DIR="${GSTACK_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 STATE_DIR="${GSTACK_STATE_DIR:-$HOME/.gstack}"
-_GIT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+_GIT_ROOT="$(jj root 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null || true)"
 
 # ─── Parse flags ─────────────────────────────────────────────
 FORCE=0

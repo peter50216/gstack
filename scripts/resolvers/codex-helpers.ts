@@ -120,7 +120,7 @@ export function extractHookSafetyProse(tmplContent: string): string | null {
 
   // Build safety prose based on what tools are hooked
   const toolDescriptions: Record<string, string> = {
-    Bash: 'check bash commands for destructive operations (rm -rf, DROP TABLE, force-push, git reset --hard, etc.) before execution',
+    Bash: 'check bash commands for destructive operations (rm -rf, DROP TABLE, force-push, git reset --hard, jj abandon, etc.) before execution',
     Edit: 'verify file edits are within the allowed scope boundary before applying',
     Write: 'verify file writes are within the allowed scope boundary before applying',
   };

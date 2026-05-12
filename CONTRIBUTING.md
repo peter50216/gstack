@@ -9,12 +9,12 @@ gstack skills are Markdown files that Claude Code discovers from a `skills/` dir
 That's what dev mode does. It symlinks your repo into the local `.claude/skills/` directory so Claude Code reads skills straight from your checkout.
 
 ```bash
-git clone https://github.com/garrytan/gstack.git && cd gstack
+jj git clone --colocate https://github.com/garrytan/gstack.git && cd gstack
 bun install                    # install dependencies
 bin/dev-setup                  # activate dev mode
 ```
 
-> **Full clone vs shallow.** The README's user-facing install uses `--depth 1` for speed. As a contributor, use a full clone (no `--depth` flag) — you'll need history for `git log`, `git blame`, `git bisect`, and reviewing PRs against earlier versions. If you already have a `--depth 1` clone from following the README, promote it to a full clone with `git fetch --unshallow`.
+> **Full clone vs shallow.** The README's user-facing install uses `jj git clone --colocate`, which keeps history available. As a contributor, use a full clone — you'll need history for `jj log`, blame-style archaeology, bisection, and reviewing PRs against earlier versions. If you already have an older `--depth 1` clone, promote it to a full clone with `git fetch --unshallow`.
 
 Now edit any `SKILL.md`, invoke it in Claude Code (e.g. `/review`), and see your changes live. When you're done developing:
 
@@ -403,12 +403,12 @@ If you don't want per-project symlinks, you can switch the global install:
 
 ```bash
 cd ~/.claude/skills/gstack
-git fetch origin
-git checkout origin/<branch>
+jj git fetch --remote origin --branch <branch>
+jj new <branch>@origin
 bun install && bun run build && ./setup
 ```
 
-This affects all projects. To revert: `git checkout main && git pull && bun run build && ./setup`.
+This affects all projects. To revert: `jj git fetch --remote origin --branch main && jj new main@origin && bun run build && ./setup`.
 
 ## Community PR triage (wave process)
 

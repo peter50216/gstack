@@ -76,8 +76,8 @@ the highest-leverage outputs.
 Before doing anything else, gather context about the developer-facing product.
 
 ```bash
-git log --oneline -15
-git diff $(git merge-base HEAD main 2>/dev/null || echo HEAD~10) --stat 2>/dev/null
+jj log -n 15 --no-graph
+jj diff --from main@origin --to @ --stat 2>/dev/null
 ```
 
 Then read:
@@ -97,8 +97,9 @@ Then read:
 **Design doc check:**
 ```bash
 setopt +o nomatch 2>/dev/null || true
-SLUG=$(~/.claude/skills/gstack/browse/bin/remote-slug 2>/dev/null || basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")
-BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null | tr '/' '-' || echo 'no-branch')
+SLUG=$(~/.claude/skills/gstack/browse/bin/remote-slug 2>/dev/null || basename "$(jj root 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null || pwd)")
+BRANCH=$(jj log -r @ --no-graph -T 'bookmarks.join(",")' 2>/dev/null | tr '/' '-' | sed 's/,$//' || echo 'no-branch')
+[ -z "$BRANCH" ] && BRANCH=$(jj log -r @ --no-graph -T 'change_id.short()' 2>/dev/null || echo 'no-branch')
 DESIGN=$(ls -t ~/.gstack/projects/$SLUG/*-$BRANCH-design-*.md 2>/dev/null | head -1)
 [ -z "$DESIGN" ] && DESIGN=$(ls -t ~/.gstack/projects/$SLUG/*-design-*.md 2>/dev/null | head -1)
 [ -n "$DESIGN" ] && echo "Design doc found: $DESIGN" || echo "No design doc found"
@@ -170,7 +171,7 @@ Persona examples by product type (pick the 3 most relevant):
 - **Platform engineer at Series C** -- thorough evaluator, cares about security/SLAs/CI integration
 - **Frontend dev adding a feature** -- TypeScript types, bundle size, React/Vue/Svelte examples
 - **Backend dev integrating an API** -- cURL examples, auth flow clarity, rate limit docs
-- **OSS contributor from GitHub** -- git clone && make test, CONTRIBUTING.md, issue templates
+- **OSS contributor from GitHub** -- jj git clone --colocate && make test, CONTRIBUTING.md, issue templates
 - **Student learning to code** -- needs hand-holding, clear error messages, lots of examples
 - **DevOps engineer setting up infra** -- Terraform/Docker, non-interactive mode, env vars
 

@@ -35,7 +35,8 @@ _SESSIONS=$(find ~/.gstack/sessions -mmin -120 -type f 2>/dev/null | wc -l | tr 
 find ~/.gstack/sessions -mmin +120 -type f -exec rm {} + 2>/dev/null || true
 _PROACTIVE=$(~/.claude/skills/gstack/bin/gstack-config get proactive 2>/dev/null || echo "true")
 _PROACTIVE_PROMPTED=$([ -f ~/.gstack/.proactive-prompted ] && echo "yes" || echo "no")
-_BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
+_BRANCH=$(jj log -r @ --no-graph -T 'bookmarks.join(",")' 2>/dev/null)
+[ -z "$_BRANCH" ] && _BRANCH=$(jj log -r @ --no-graph -T 'change_id.short()' 2>/dev/null || git branch --show-current 2>/dev/null || echo "unknown")
 echo "BRANCH: $_BRANCH"
 _SKILL_PREFIX=$(~/.claude/skills/gstack/bin/gstack-config get skill_prefix 2>/dev/null || echo "false")
 echo "PROACTIVE: $_PROACTIVE"
@@ -59,7 +60,7 @@ _QUESTION_TUNING=$(~/.claude/skills/gstack/bin/gstack-config get question_tuning
 echo "QUESTION_TUNING: $_QUESTION_TUNING"
 mkdir -p ~/.gstack/analytics
 if [ "$_TEL" != "off" ]; then
-echo '{"skill":"document-release","ts":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","repo":"'$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null || echo "unknown")'"}'  >> ~/.gstack/analytics/skill-usage.jsonl 2>/dev/null || true
+echo '{"skill":"document-release","ts":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","repo":"'$(basename "$(jj root 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null || echo "unknown")'"}'  >> ~/.gstack/analytics/skill-usage.jsonl 2>/dev/null || true
 fi
 for _PF in $(find ~/.gstack/analytics -maxdepth 1 -name '.pending-*' 2>/dev/null); do
   if [ -f "$_PF" ]; then
@@ -234,7 +235,7 @@ Key routing rules:
 - Resume context → invoke /context-restore
 ```
 
-Then commit the change: `git add CLAUDE.md && git commit -m "chore: add gstack skill routing rules to CLAUDE.md"`
+Then commit the change: `jj commit CLAUDE.md -m "chore: add gstack skill routing rules to CLAUDE.md"`
 
 If B: run `~/.claude/skills/gstack/bin/gstack-config set routing_declined true` and say they can re-enable with `gstack-config set routing_declined false`.
 
@@ -250,10 +251,10 @@ Options:
 - B) No, I'll handle it myself
 
 If A:
-1. Run `git rm -r .claude/skills/gstack/`
+1. Remove the vendored directory from the working copy: `rm -rf .claude/skills/gstack/`
 2. Run `echo '.claude/skills/gstack/' >> .gitignore`
 3. Run `~/.claude/skills/gstack/bin/gstack-team-init required` (or `optional`)
-4. Run `git add .claude/ .gitignore CLAUDE.md && git commit -m "chore: migrate gstack from vendored to team mode"`
+4. Run `jj commit .claude/ .gitignore CLAUDE.md -m "chore: migrate gstack from vendored to team mode"`
 5. Tell the user: "Done. Each developer now runs: `cd ~/.claude/skills/gstack && ./setup --team`"
 
 If B: say "OK, you're on your own to keep the vendored copy up to date."
@@ -369,7 +370,7 @@ _BRAIN_CONFIG_BIN="~/.claude/skills/gstack/bin/gstack-config"
 
 # /sync-gbrain context-load: teach the agent to use gbrain when it's available.
 # Per-worktree pin: post-spike redesign uses kubectl-style `.gbrain-source` in the
-# git toplevel to scope queries. Look for the pin in the worktree (not a global
+# VCS toplevel to scope queries. Look for the pin in the worktree (not a global
 # state file) so that opening worktree B without a pin doesn't claim "indexed"
 # just because worktree A was synced. Empty string when gbrain is not
 # configured (zero context cost for non-gbrain users).
@@ -378,7 +379,7 @@ if [ -f "$_GBRAIN_CONFIG" ] && command -v gbrain >/dev/null 2>&1; then
   _GBRAIN_VERSION_OK=$(gbrain --version 2>/dev/null | grep -c '^gbrain ' || echo 0)
   if [ "$_GBRAIN_VERSION_OK" -gt 0 ] 2>/dev/null; then
     _GBRAIN_PIN_PATH=""
-    _REPO_TOP=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+    _REPO_TOP=$(jj root 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null || echo "")
     if [ -n "$_REPO_TOP" ] && [ -f "$_REPO_TOP/.gbrain-source" ]; then
       _GBRAIN_PIN_PATH="$_REPO_TOP/.gbrain-source"
     fi
@@ -539,6 +540,24 @@ fi
 
 If artifacts are listed, read the newest useful one. If `LAST_SESSION` or `LATEST_CHECKPOINT` appears, give a 2-sentence welcome back summary. If `RECENT_PATTERN` clearly implies a next skill, suggest it once.
 
+## Version Control Preference
+
+This fork is configured for a Jujutsu-first workflow. For project source-control work, prefer `jj` whenever a repo has `.jj/` or `jj root` succeeds.
+
+Translate git-oriented workflow steps to these jj equivalents:
+- Inspect state: `jj status`
+- Current root: `jj root`
+- Current change id/commit id: `jj log -r @ --no-graph -T 'change_id.short() ++ " " ++ commit_id.short() ++ "\n"'`
+- Fetch base branch: `jj git fetch --remote origin --branch <base>`
+- Diff against base: `jj diff --from <base>@origin --to @`; add `--stat`, `--name-only`, or `--git` as needed
+- Log branch work: `jj log -r '<base>@origin..@' --no-graph`
+- Commit selected paths: `jj commit <paths> -m "<message>"`; do not stage with `git add`
+- Restore paths: `jj restore <paths>`
+- Rebase onto the latest base: `jj rebase -d <base>@origin`
+- Push: `jj git push --remote origin`, or `jj git push --remote origin --bookmark <bookmark>` when pushing a named bookmark
+
+Use raw `git` only when the step is explicitly about Git hosting/install plumbing, GitHub/GitLab CLI metadata, gstack's own private git-backed artifact sync, or a tool that has no practical jj equivalent.
+
 ## Writing Style (skip entirely if `EXPLAIN_LEVEL: terse` appears in the preamble echo OR the user's current message explicitly requests terse / no-explanations output)
 
 Applies to AskUserQuestion, user replies, and findings. AskUserQuestion Format is structure; this is prose quality.
@@ -659,7 +678,7 @@ Skill: </skill-name-if-running>
 [/gstack-context]
 ```
 
-Rules: stage only intentional files, NEVER `git add -A`, do not commit broken tests or mid-edit state, and push only if `CHECKPOINT_PUSH` is `"true"`. Do not announce each WIP commit.
+Rules: commit only intentional paths with `jj commit <paths> -m "WIP: ..."`, never stage broad changes with `git add -A` or `git add .`, do not commit broken tests or mid-edit state, and push only if `CHECKPOINT_PUSH` is `"true"`. Do not announce each WIP commit.
 
 `/context-restore` reads `[gstack-context]`; `/ship` squashes WIP commits into clean commits.
 
@@ -669,7 +688,7 @@ If `CHECKPOINT_MODE` is `"explicit"`: ignore this section unless a skill or user
 
 During long-running skill sessions, periodically write a brief `[PROGRESS]` summary: done, next, surprises.
 
-If you are looping on the same diagnostic, same file, or failed fix variants, STOP and reassess. Consider escalation or /context-save. Progress summaries must NEVER mutate git state.
+If you are looping on the same diagnostic, same file, or failed fix variants, STOP and reassess. Consider escalation or /context-save. Progress summaries must NEVER mutate VCS state.
 
 ## Question Tuning (skip entirely if `QUESTION_TUNING: false`)
 
@@ -725,7 +744,7 @@ _TEL_END=$(date +%s)
 _TEL_DUR=$(( _TEL_END - _TEL_START ))
 rm -f ~/.gstack/analytics/.pending-"$_SESSION_ID" 2>/dev/null || true
 # Session timeline: record skill completion (local-only, never sent anywhere)
-~/.claude/skills/gstack/bin/gstack-timeline-log '{"skill":"SKILL_NAME","event":"completed","branch":"'$(git branch --show-current 2>/dev/null || echo unknown)'","outcome":"OUTCOME","duration_s":"'"$_TEL_DUR"'","session":"'"$_SESSION_ID"'"}' 2>/dev/null || true
+~/.claude/skills/gstack/bin/gstack-timeline-log '{"skill":"SKILL_NAME","event":"completed","branch":"'$(jj log -r @ --no-graph -T 'bookmarks.join(",")' 2>/dev/null || echo unknown)'","outcome":"OUTCOME","duration_s":"'"$_TEL_DUR"'","session":"'"$_SESSION_ID"'"}' 2>/dev/null || true
 # Local analytics (gated on telemetry setting)
 if [ "$_TEL" != "off" ]; then
 echo '{"skill":"SKILL_NAME","duration_s":"'"$_TEL_DUR"'","outcome":"OUTCOME","browse":"USED_BROWSE","session":"'"$_SESSION_ID"'","ts":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' >> ~/.gstack/analytics/skill-usage.jsonl 2>/dev/null || true
@@ -748,10 +767,11 @@ PLAN MODE EXCEPTION — always allowed (it's the plan file).
 
 ## Step 0: Detect platform and base branch
 
-First, detect the git hosting platform from the remote URL:
+First, detect the Git hosting platform from the remote URL. In jj repos, prefer
+`jj git remote list`; fall back to raw git only if needed:
 
 ```bash
-git remote get-url origin 2>/dev/null
+jj git remote list 2>/dev/null || git remote get-url origin 2>/dev/null
 ```
 
 - If the URL contains "github.com" → platform is **GitHub**
@@ -759,7 +779,7 @@ git remote get-url origin 2>/dev/null
 - Otherwise, check CLI availability:
   - `gh auth status 2>/dev/null` succeeds → platform is **GitHub** (covers GitHub Enterprise)
   - `glab auth status 2>/dev/null` succeeds → platform is **GitLab** (covers self-hosted)
-  - Neither → **unknown** (use git-native commands only)
+  - Neither → **unknown** (use jj-native commands when available; raw git fallback only if needed)
 
 Determine which branch this PR/MR targets, or the repo's default branch if no
 PR/MR exists. Use the result as "the base branch" in all subsequent steps.
@@ -772,16 +792,17 @@ PR/MR exists. Use the result as "the base branch" in all subsequent steps.
 1. `glab mr view -F json 2>/dev/null` and extract the `target_branch` field — if succeeds, use it
 2. `glab repo view -F json 2>/dev/null` and extract the `default_branch` field — if succeeds, use it
 
-**Git-native fallback (if unknown platform, or CLI commands fail):**
-1. `git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||'`
-2. If that fails: `git rev-parse --verify origin/main 2>/dev/null` → use `main`
-3. If that fails: `git rev-parse --verify origin/master 2>/dev/null` → use `master`
+**jj-native fallback (if unknown platform, or CLI commands fail):**
+1. `jj log -r 'trunk()' --no-graph -T 'bookmarks.join(",")' 2>/dev/null | cut -d, -f1`
+2. If that fails: `jj log -r 'main@origin' --no-graph -T '"main"' 2>/dev/null` → use `main`
+3. If that fails: `jj log -r 'master@origin' --no-graph -T '"master"' 2>/dev/null` → use `master`
+4. Raw git fallback if the repo is not using jj: `git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||'`
 
 If all fail, fall back to `main`.
 
-Print the detected base branch name. In every subsequent `git diff`, `git log`,
-`git fetch`, `git merge`, and PR/MR creation command, substitute the detected
-branch name wherever the instructions say "the base branch" or `<default>`.
+Print the detected base branch name. In every subsequent jj command, substitute
+the detected branch name wherever the instructions say "the base branch" or
+`<default>`. Use `<base>@origin` for remote-bookmark revsets.
 
 ---
 
@@ -823,21 +844,21 @@ subjective decisions.
 2. Gather context about what changed:
 
 ```bash
-git diff <base>...HEAD --stat
+jj diff --from <base>@origin --to @ --stat
 ```
 
 ```bash
-git log <base>..HEAD --oneline
+jj log -r '<base>@origin..@' --no-graph
 ```
 
 ```bash
-git diff <base>...HEAD --name-only
+jj diff --from <base>@origin --to @ --name-only
 ```
 
 3. Discover all documentation files in the repo:
 
 ```bash
-find . -maxdepth 2 -name "*.md" -not -path "./.git/*" -not -path "./node_modules/*" -not -path "./.gstack/*" -not -path "./.context/*" | sort
+find . -maxdepth 2 -name "*.md" -not -path "./.git/*" -not -path "./.jj/*" -not -path "./node_modules/*" -not -path "./.gstack/*" -not -path "./.context/*" | sort
 ```
 
 4. Classify the changes into categories relevant to documentation:
@@ -998,7 +1019,7 @@ If TODOS.md does not exist, skip this step.
 2. Check if VERSION was already modified on this branch:
 
 ```bash
-git diff <base>...HEAD -- VERSION
+jj diff --from <base>@origin --to @ -- VERSION
 ```
 
 3. **If VERSION was NOT bumped:** Use AskUserQuestion:
@@ -1011,7 +1032,7 @@ git diff <base>...HEAD -- VERSION
    still covers the full scope of changes on this branch:
 
    a. Read the CHANGELOG entry for the current VERSION. What features does it describe?
-   b. Read the full diff (`git diff <base>...HEAD --stat` and `git diff <base>...HEAD --name-only`).
+   b. Read the full diff (`jj diff --from <base>@origin --to @ --stat` and `jj diff --from <base>@origin --to @ --name-only`).
       Are there significant changes (new features, new skills, new commands, major refactors)
       that are NOT mentioned in the CHANGELOG entry for the current version?
    c. **If the CHANGELOG entry covers everything:** Skip — output "VERSION: Already bumped to
@@ -1030,17 +1051,17 @@ git diff <base>...HEAD -- VERSION
 
 ## Step 9: Commit & Output
 
-**Empty check first:** Run `git status` (never use `-uall`). If no documentation files were
+**Empty check first:** Run `jj status`. If no documentation files were
 modified by any previous step, output "All documentation is up to date." and exit without
 committing.
 
 **Commit:**
 
-1. Stage modified documentation files by name (never `git add -A` or `git add .`).
+1. Commit modified documentation files by name.
 2. Create a single commit:
 
 ```bash
-git commit -m "$(cat <<'EOF'
+jj commit <doc-files> -m "$(cat <<'EOF'
 docs: update project documentation for vX.Y.Z.W
 
 Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
@@ -1051,7 +1072,7 @@ EOF
 3. Push to the current branch:
 
 ```bash
-git push
+jj git push --remote origin
 ```
 
 **PR/MR body update (idempotent, race-safe):**

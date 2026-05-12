@@ -11,10 +11,10 @@ Options:
 - B) No, I'll handle it myself
 
 If A:
-1. Run \`git rm -r .claude/skills/gstack/\`
+1. Remove the vendored directory from the working copy: \`rm -rf .claude/skills/gstack/\`
 2. Run \`echo '.claude/skills/gstack/' >> .gitignore\`
 3. Run \`${ctx.paths.binDir}/gstack-team-init required\` (or \`optional\`)
-4. Run \`git add .claude/ .gitignore CLAUDE.md && git commit -m "chore: migrate gstack from vendored to team mode"\`
+4. Run \`jj commit .claude/ .gitignore CLAUDE.md -m "chore: migrate gstack from vendored to team mode"\`
 5. Tell the user: "Done. Each developer now runs: \`cd ~/.claude/skills/gstack && ./setup --team\`"
 
 If B: say "OK, you're on your own to keep the vendored copy up to date."

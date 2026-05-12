@@ -58,23 +58,23 @@ If `CDP_MODE=true`: skip cookie import steps — the real browser already has co
 
 Look for `DESIGN.md`, `design-system.md`, or similar in the repo root. If found, read it — all design decisions must be calibrated against it. Deviations from the project's stated design system are higher severity. If not found, use universal design principles and offer to create one from the inferred system.
 
-**Check for clean working tree:**
+**Check for clean working copy:**
 
 ```bash
-git status --porcelain
+jj status
 ```
 
-If the output is non-empty (working tree is dirty), **STOP** and use AskUserQuestion:
+If the output is non-empty (working copy is dirty), **STOP** and use AskUserQuestion:
 
-"Your working tree has uncommitted changes. /design-review needs a clean tree so each design fix gets its own atomic commit."
+"Your working copy has uncommitted changes. /design-review needs a clean starting point so each design fix gets its own atomic commit."
 
 - A) Commit my changes — commit all current changes with a descriptive message, then start design review
-- B) Stash my changes — stash, run design review, pop the stash after
+- B) Snapshot and move on — create a checkpoint commit with `jj commit`, run design review on a fresh change
 - C) Abort — I'll clean up manually
 
-RECOMMENDATION: Choose A because uncommitted work should be preserved as a commit before design review adds its own fix commits.
+RECOMMENDATION: Choose A because uncommitted work should be preserved as a jj commit before design review adds its own fix commits.
 
-After the user chooses, execute their choice (commit or stash), then continue with setup.
+After the user chooses, execute their choice, then continue with setup.
 
 **Find the browse binary:**
 
@@ -189,8 +189,7 @@ This step is optional — skip for trivial CSS fixes (wrong hex color, missing p
 ### 8c. Commit
 
 ```bash
-git add <only-changed-files>
-git commit -m "style(design): FINDING-NNN — short description"
+jj commit <only-changed-files> -m "style(design): FINDING-NNN — short description"
 ```
 
 - One commit per fix. Never bundle multiple fixes.
@@ -213,7 +212,7 @@ Take **before/after screenshot pair** for every fix.
 
 - **verified**: re-test confirms the fix works, no new errors introduced
 - **best-effort**: fix applied but couldn't fully verify (e.g., needs specific browser state)
-- **reverted**: regression detected → `git revert HEAD` → mark finding as "deferred"
+- **reverted**: regression detected → `jj revert -r @- --onto @` → mark finding as "deferred"
 
 ### 8e.5. Regression Test (design-review variant)
 
@@ -303,10 +302,10 @@ If the repo has a `TODOS.md`:
 
 ## Additional Rules (design-review specific)
 
-11. **Clean working tree required.** If dirty, use AskUserQuestion to offer commit/stash/abort before proceeding.
+11. **Clean working copy required.** If dirty, use AskUserQuestion to offer commit/checkpoint/abort before proceeding.
 12. **One commit per fix.** Never bundle multiple design fixes into one commit.
 13. **Only modify tests when generating regression tests in Phase 8e.5.** Never modify CI configuration. Never modify existing tests — only create new test files.
-14. **Revert on regression.** If a fix makes things worse, `git revert HEAD` immediately.
+14. **Revert on regression.** If a fix makes things worse, use `jj revert -r @- --onto @` immediately.
 15. **Self-regulate.** Follow the design-fix risk heuristic. When in doubt, stop and ask.
 16. **CSS-first.** Prefer CSS/styling changes over structural component changes. CSS-only changes are safer and more reversible.
 17. **DESIGN.md export.** You MAY write a DESIGN.md file if the user accepts the offer from Phase 2.

@@ -75,9 +75,9 @@ Never skip a verification step because a prior `/ship` run already performed it.
 
 1. Check the current branch. If on the base branch or the repo's default branch, **abort**: "You're on the base branch. Ship from a feature branch."
 
-2. Run `git status` (never use `-uall`). Uncommitted changes are always included — no need to ask.
+2. Run `jj status`. Uncommitted working-copy changes are always included — no need to ask.
 
-3. Run `git diff <base>...HEAD --stat` and `git log <base>..HEAD --oneline` to understand what's being shipped.
+3. Run `jj diff --from <base>@origin --to @ --stat` and `jj log -r '<base>@origin..@' --no-graph` to understand what's being shipped.
 
 4. Check review readiness:
 
@@ -87,7 +87,7 @@ If the Eng Review is NOT "CLEAR":
 
 Print: "No prior eng review found — ship will run its own pre-landing review in Step 9."
 
-Check diff size: `git diff <base>...HEAD --stat | tail -1`. If the diff is >200 lines, add: "Note: This is a large diff. Consider running `/plan-eng-review` or `/autoplan` for architecture-level review before shipping."
+Check diff size: `jj diff --from <base>@origin --to @ --stat | tail -1`. If the diff is >200 lines, add: "Note: This is a large diff. Consider running `/plan-eng-review` or `/autoplan` for architecture-level review before shipping."
 
 If CEO Review is missing, mention as informational ("CEO Review not run — recommended for product changes") but do NOT block.
 
@@ -104,7 +104,7 @@ service with existing deployment — verify that a distribution pipeline exists.
 
 1. Check if the diff adds a new `cmd/` directory, `main.go`, or `bin/` entry point:
    ```bash
-   git diff origin/<base> --name-only | grep -E '(cmd/.*/main\.go|bin/|Cargo\.toml|setup\.py|package\.json)' | head -5
+   jj diff --from <base>@origin --to @ --name-only | grep -E '(cmd/.*/main\.go|bin/|Cargo\.toml|setup\.py|package\.json)' | head -5
    ```
 
 2. If new artifact detected, check for a release workflow:
@@ -127,10 +127,10 @@ service with existing deployment — verify that a distribution pipeline exists.
 
 ## Step 3: Merge the base branch (BEFORE tests)
 
-Fetch and merge the base branch into the feature branch so tests run against the merged state:
+Fetch and rebase onto the base branch so tests run against the latest base state:
 
 ```bash
-git fetch origin <base> && git merge origin/<base> --no-edit
+jj git fetch --remote origin --branch <base> && jj rebase -d <base>@origin
 ```
 
 **If there are merge conflicts:** Try to auto-resolve if they are simple (VERSION, schema.rb, CHANGELOG ordering). If conflicts are complex or ambiguous, **STOP** and show them.
@@ -178,7 +178,7 @@ Evals are mandatory when prompt-related files change. Skip this step entirely if
 **1. Check if the diff touches prompt-related files:**
 
 ```bash
-git diff origin/<base> --name-only
+jj diff --from <base>@origin --to @ --name-only
 ```
 
 Match against these patterns (from CLAUDE.md):
@@ -239,7 +239,7 @@ If multiple suites need to run, run them sequentially (each needs a test lane). 
 
 **Subagent prompt:** Pass the following instructions to the subagent, with `<base>` substituted with the base branch:
 
-> You are running a ship-workflow test coverage audit. Run `git diff <base>...HEAD` as needed. Do not commit or push — report only.
+> You are running a ship-workflow test coverage audit. Run `jj diff --from <base>@origin --to @ --git` as needed. Do not commit or push — report only.
 >
 > {{TEST_COVERAGE_AUDIT_SHIP}}
 >
@@ -263,7 +263,7 @@ If multiple suites need to run, run them sequentially (each needs a test lane). 
 
 **Subagent prompt:** Pass these instructions to the subagent:
 
-> You are running a ship-workflow plan completion audit. The base branch is `<base>`. Use `git diff <base>...HEAD` to see what shipped. Do not commit or push — report only.
+> You are running a ship-workflow plan completion audit. The base branch is `<base>`. Use `jj diff --from <base>@origin --to @ --git` to see what shipped. Do not commit or push — report only.
 >
 > {{PLAN_COMPLETION_AUDIT_SHIP}}
 >
@@ -295,7 +295,7 @@ Review the diff for structural issues that tests don't catch.
 
 1. Read `.claude/skills/review/checklist.md`. If the file cannot be read, **STOP** and report the error.
 
-2. Run `git diff origin/<base>` to get the full diff (scoped to feature changes against the freshly-fetched base branch).
+2. Run `jj diff --from <base>@origin --to @ --git` to get the full diff (scoped to feature changes against the freshly-fetched base branch).
 
 3. Apply the review checklist in two passes:
    - **Pass 1 (CRITICAL):** SQL & Data Safety, LLM Output Trust Boundary
@@ -324,7 +324,7 @@ Review the diff for structural issues that tests don't catch.
    - If 3 or fewer ASK items, you may use individual AskUserQuestion calls instead
 
 7. **After all fixes (auto + user-approved):**
-   - If ANY fixes were applied: commit fixed files by name (`git add <fixed-files> && git commit -m "fix: pre-landing review fixes"`), then **STOP** and tell the user to run `/ship` again to re-test.
+   - If ANY fixes were applied: commit fixed files by name (`jj commit <fixed-files> -m "fix: pre-landing review fixes"`), then **STOP** and tell the user to run `/ship` again to re-test.
    - If no fixes applied (all ASK items skipped, or no issues found): continue to Step 12.
 
 8. Output summary: `Pre-Landing Review: N issues — M auto-fixed, K asked (J fixed, L skipped)`
@@ -333,7 +333,7 @@ Review the diff for structural issues that tests don't catch.
 
 9. Persist the review result to the review log:
 ```bash
-~/.claude/skills/gstack/bin/gstack-review-log '{"skill":"review","timestamp":"TIMESTAMP","status":"STATUS","issues_found":N,"critical":N,"informational":N,"quality_score":SCORE,"specialists":SPECIALISTS_JSON,"findings":FINDINGS_JSON,"commit":"'"$(git rev-parse --short HEAD)"'","via":"ship"}'
+~/.claude/skills/gstack/bin/gstack-review-log '{"skill":"review","timestamp":"TIMESTAMP","status":"STATUS","issues_found":N,"critical":N,"informational":N,"quality_score":SCORE,"specialists":SPECIALISTS_JSON,"findings":FINDINGS_JSON,"commit":"'"$(jj log -r @ --no-graph -T 'commit_id.short()' 2>/dev/null || git rev-parse --short HEAD)"'","via":"ship"}'
 ```
 Substitute TIMESTAMP (ISO 8601), STATUS ("clean" if no issues, "issues_found" otherwise),
 and N values from the summary counts above. The `via:"ship"` distinguishes from standalone `/review` runs.
@@ -374,7 +374,7 @@ For each comment in `comments`:
 - The comment (file:line or [top-level] + body summary + permalink URL)
 - `RECOMMENDATION: Choose A because [one-line reason]`
 - Options: A) Fix now, B) Acknowledge and ship anyway, C) It's a false positive
-- If user chooses A: apply the fix, commit the fixed files (`git add <fixed-files> && git commit -m "fix: address Greptile review — <brief description>"`), reply using the **Fix reply template** from greptile-triage.md (include inline diff + explanation), and save to both per-project and global greptile-history (type: fix).
+- If user chooses A: apply the fix, commit the fixed files (`jj commit <fixed-files> -m "fix: address Greptile review — <brief description>"`), reply using the **Fix reply template** from greptile-triage.md (include inline diff + explanation), and save to both per-project and global greptile-history (type: fix).
 - If user chooses C: reply using the **False Positive reply template** from greptile-triage.md (include evidence + suggested re-rank), save to both per-project and global greptile-history (type: fp).
 
 **VALID BUT ALREADY FIXED:** Reply using the **Already Fixed reply template** from greptile-triage.md — no AskUserQuestion needed:
@@ -420,12 +420,12 @@ If any learnings come back, name which one applies to the version bump or CHANGE
 **Idempotency check:** Before bumping, classify the state by comparing `VERSION` against the base branch AND against `package.json`'s `version` field. Four states: FRESH (do bump), ALREADY_BUMPED (skip bump), DRIFT_STALE_PKG (sync pkg only, no re-bump), DRIFT_UNEXPECTED (stop and ask).
 
 ```bash
-if ! git rev-parse --verify origin/<base> >/dev/null 2>&1; then
-  echo "ERROR: Unable to resolve origin/<base>. Run 'git fetch origin' or verify the base branch exists."
+if ! jj log -r '<base>@origin' --no-graph >/dev/null 2>&1; then
+  echo "ERROR: Unable to resolve <base>@origin. Run 'jj git fetch --remote origin --branch <base>' or verify the base branch exists."
   exit 1
 fi
 
-BASE_VERSION=$(git show origin/<base>:VERSION 2>/dev/null | tr -d '\r\n[:space:]' || echo "0.0.0.0")
+BASE_VERSION=$(jj file show -r <base>@origin VERSION 2>/dev/null | tr -d '\r\n[:space:]' || echo "0.0.0.0")
 CURRENT_VERSION=$(cat VERSION 2>/dev/null | tr -d '\r\n[:space:]' || echo "0.0.0.0")
 [ -z "$BASE_VERSION" ] && BASE_VERSION="0.0.0.0"
 [ -z "$CURRENT_VERSION" ] && CURRENT_VERSION="0.0.0.0"
@@ -477,7 +477,7 @@ Read the `STATE:` line and dispatch:
 1. Read the current `VERSION` file (4-digit format: `MAJOR.MINOR.PATCH.MICRO`)
 
 2. **Auto-decide the bump level based on the diff:**
-   - Count lines changed (`git diff origin/<base>...HEAD --stat | tail -1`)
+   - Count lines changed (`jj diff --from <base>@origin --to @ --stat | tail -1`)
    - Check for feature signals: new route/page files (e.g. `app/*/page.tsx`, `pages/*.ts`), new DB migration/schema files, new test files alongside new source files, or branch name starting with `feat/`
    - **MICRO** (4th digit): < 50 lines changed, trivial tweaks, typos, config
    - **PATCH** (3rd digit): 50+ lines changed, no feature signals detected
@@ -598,8 +598,8 @@ Read TODOS.md and verify it follows the recommended structure:
 This step is fully automatic — no user interaction.
 
 Use the diff and commit history already gathered in earlier steps:
-- `git diff <base>...HEAD` (full diff against the base branch)
-- `git log <base>..HEAD --oneline` (all commits being shipped)
+- `jj diff --from <base>@origin --to @ --git` (full diff against the base branch)
+- `jj log -r '<base>@origin..@' --no-graph` (all commits being shipped)
 
 For each TODO item, check if the changes in this PR complete it by:
 - Matching commit messages against the TODO title and description
@@ -632,7 +632,7 @@ on the branch (earlier landed work) must be preserved.
 
 **Detection:**
 ```bash
-WIP_COUNT=$(git log <base>..HEAD --oneline --grep="^WIP:" 2>/dev/null | wc -l | tr -d ' ')
+WIP_COUNT=$(jj log -r '<base>@origin..@ & description(glob:"WIP:*")' --count 2>/dev/null | tr -d ' ')
 echo "WIP_COMMITS: $WIP_COUNT"
 ```
 
@@ -643,38 +643,24 @@ If `WIP_COUNT` > 0, collect the WIP context first so it survives the squash:
 ```bash
 # Export [gstack-context] blocks from all WIP commits on this branch.
 # This file becomes input to the CHANGELOG entry and may inform PR body context.
-mkdir -p "$(git rev-parse --show-toplevel)/.gstack"
-git log <base>..HEAD --grep="^WIP:" --format="%H%n%B%n---END---" > \
-  "$(git rev-parse --show-toplevel)/.gstack/wip-context-before-squash.md" 2>/dev/null || true
+mkdir -p "$(jj root)/.gstack"
+jj log -r '<base>@origin..@ & description(glob:"WIP:*")' --no-graph \
+  -T 'commit_id.short() ++ "\n" ++ description ++ "\n---END---\n"' > \
+  "$(jj root)/.gstack/wip-context-before-squash.md" 2>/dev/null || true
 ```
 
 **Non-destructive squash strategy:**
 
-`git reset --soft <merge-base>` WOULD uncommit everything including non-WIP commits.
-DO NOT DO THAT. Instead, use `git rebase` scoped to filter WIP commits only.
+In jj, do not use git reset/rebase to rewrite this history. Prefer explicit
+`jj squash` operations that fold each WIP change into its intended parent or
+logical destination while preserving non-WIP commits.
 
-Option 1 (preferred, if there are non-WIP commits mixed in):
 ```bash
-# Interactive rebase with automated WIP squashing.
-# Mark every WIP commit as 'fixup' (drop its message, fold changes into prior commit).
-git rebase -i $(git merge-base HEAD origin/<base>) \
-  --exec 'true' \
-  -X ours 2>/dev/null || {
-    echo "Rebase conflict. Aborting: git rebase --abort"
-    git rebase --abort
-    echo "STATUS: BLOCKED — manual WIP squash required"
-    exit 1
-  }
-```
-
-Option 2 (simpler, if the branch is ALL WIP commits so far — no landed work):
-```bash
-# Branch contains only WIP commits. Reset-soft is safe here because there's
-# nothing non-WIP to preserve. Verify first.
-NON_WIP=$(git log <base>..HEAD --oneline --invert-grep --grep="^WIP:" 2>/dev/null | wc -l | tr -d ' ')
-if [ "$NON_WIP" -eq 0 ]; then
-  git reset --soft $(git merge-base HEAD origin/<base>)
-  echo "WIP-only branch, reset-soft to merge base. Step 15.1 will create clean commits."
+NON_WIP=$(jj log -r '<base>@origin..@ ~ description(glob:"WIP:*")' --count 2>/dev/null | tr -d ' ')
+if [ "$NON_WIP" -eq 0 ] && [ "$WIP_COUNT" -gt 0 ]; then
+  echo "WIP-only branch. Leave the current changes in place; Step 15.1 will create clean commits with jj commit <paths>."
+else
+  echo "Mixed WIP and non-WIP commits. Squash WIP changes explicitly with jj squash -r <wip-rev> --into <target-rev>."
 fi
 ```
 
@@ -682,15 +668,15 @@ Decide at runtime which option applies. If unsure, prefer stopping and asking th
 user via AskUserQuestion rather than destroying non-WIP commits.
 
 **Anti-footgun rules:**
-- NEVER blind `git reset --soft` if there are non-WIP commits. Codex flagged this
-  as destructive — it would uncommit real landed work and turn the push step into
-  a non-fast-forward push for anyone who already pushed.
+- NEVER use raw git reset/rebase for this step in a jj repo.
+- NEVER squash WIP commits blindly if there are non-WIP commits. Pick the target
+  revision intentionally for each `jj squash`.
 - Only proceed to Step 15.1 after WIP commits are successfully squashed/absorbed
   or the branch has been verified to contain only WIP work.
 
 ### Step 15.1: Bisectable Commits
 
-**Goal:** Create small, logical commits that work well with `git bisect` and help LLMs understand what changed.
+**Goal:** Create small, logical commits that work well with bisection and help LLMs understand what changed.
 
 1. Analyze the diff and group changes into logical commits. Each commit should represent **one coherent change** — not one file, but one logical unit.
 
@@ -716,7 +702,7 @@ user via AskUserQuestion rather than destroying non-WIP commits.
    - Only the **final commit** (VERSION + CHANGELOG) gets the version tag and co-author trailer:
 
 ```bash
-git commit -m "$(cat <<'EOF'
+jj commit VERSION package.json CHANGELOG.md TODOS.md -m "$(cat <<'EOF'
 chore: bump version and changelog (vX.Y.Z.W)
 
 {{CO_AUTHOR_TRAILER}}
@@ -753,9 +739,9 @@ Claiming work is complete without verification is dishonesty, not efficiency.
 **Idempotency check:** Check if the branch is already pushed and up to date.
 
 ```bash
-git fetch origin <branch-name> 2>/dev/null
-LOCAL=$(git rev-parse HEAD)
-REMOTE=$(git rev-parse origin/<branch-name> 2>/dev/null || echo "none")
+jj git fetch --remote origin --branch <branch-name> 2>/dev/null
+LOCAL=$(jj log -r @ --no-graph -T 'commit_id.short()')
+REMOTE=$(jj log -r '<branch-name>@origin' --no-graph -T 'commit_id.short()' 2>/dev/null || echo "none")
 echo "LOCAL: $LOCAL  REMOTE: $REMOTE"
 [ "$LOCAL" = "$REMOTE" ] && echo "ALREADY_PUSHED" || echo "PUSH_NEEDED"
 ```
@@ -763,7 +749,7 @@ echo "LOCAL: $LOCAL  REMOTE: $REMOTE"
 If `ALREADY_PUSHED`, skip the push but continue to Step 18. Otherwise push with upstream tracking:
 
 ```bash
-git push -u origin <branch-name>
+jj git push --remote origin --bookmark <branch-name>
 ```
 
 **You are NOT done.** The code is pushed but documentation sync and PR creation are mandatory final steps. Continue to Step 18.
@@ -830,7 +816,7 @@ The PR/MR body should contain these sections:
 
 ```
 ## Summary
-<Summarize ALL changes being shipped. Run `git log <base>..HEAD --oneline` to enumerate
+<Summarize ALL changes being shipped. Run `jj log -r '<base>@origin..@' --no-graph` to enumerate
 every commit. Exclude the VERSION/CHANGELOG metadata commit (that's this PR's bookkeeping,
 not a substantive change). Group the remaining commits into logical sections (e.g.,
 "**Performance**", "**Dead Code Removal**", "**Infrastructure**"). Every substantive commit
@@ -946,7 +932,7 @@ This step is automatic — never skip it, never ask for confirmation.
 
 - **Never skip tests.** If tests fail, stop.
 - **Never skip the pre-landing review.** If checklist.md is unreadable, stop.
-- **Never force push.** Use regular `git push` only.
+- **Never force push.** Use regular `jj git push --remote origin` only.
 - **Never ask for trivial confirmations** (e.g., "ready to push?", "create PR?"). DO stop for: version bumps (MINOR/MAJOR), pre-landing review findings (ASK items), and Codex structured review [P1] findings (large diffs only).
 - **Always use the 4-digit version format** from the VERSION file.
 - **Date format in CHANGELOG:** `YYYY-MM-DD`

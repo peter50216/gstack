@@ -32,7 +32,7 @@ Detailed guides for every gstack skill — philosophy, workflow, and examples.
 | [`/devex-review`](#devex-review) | **DX Reviewer (live)** | Live developer experience audit. Walks the actual onboarding flow, measures TTHW, catches the docs lies. |
 | [`/plan-tune`](#plan-tune) | **Question Tuner** | Self-tune AskUserQuestion sensitivity per question. Mark questions as never-ask, always-ask, or only-for-one-way. |
 | [`/learn`](#learn) | **Memory** | Manage what gstack learned across sessions. Review, search, prune, and export project-specific patterns and preferences. |
-| [`/context-save`](#context-save) | **Save State** | Save working context (git state, decisions, remaining work) so any future session can resume. |
+| [`/context-save`](#context-save) | **Save State** | Save working context (VCS state, decisions, remaining work) so any future session can resume. |
 | [`/context-restore`](#context-restore) | **Restore State** | Resume from a saved context, even across Conductor workspace handoffs. |
 | [`/health`](#health) | **Code Quality Dashboard** | Wraps type checker, linter, tests, dead code detection. Computes a weighted 0-10 score; tracks trends over time. |
 | [`/landing-report`](#landing-report) | **Ship Queue Dashboard** | Read-only snapshot of the workspace-aware ship queue. Which version slots are claimed, which sibling workspaces have WIP. |
@@ -45,7 +45,7 @@ Detailed guides for every gstack skill — philosophy, workflow, and examples.
 | [`/sync-gbrain`](#sync-gbrain) | **Keep Brain Current** | Refresh gbrain against this repo's code; teach the agent when to use `gbrain search`/`code-def` over Grep. Idempotent; safe to re-run. |
 | | | |
 | **Safety & Utility** | | |
-| [`/careful`](#safety--guardrails) | **Safety Guardrails** | Warns before destructive commands (rm -rf, DROP TABLE, force-push, git reset --hard). Override any warning. Common build cleanups whitelisted. |
+| [`/careful`](#safety--guardrails) | **Safety Guardrails** | Warns before destructive commands (rm -rf, DROP TABLE, force-push, git reset --hard, jj abandon). Override any warning. Common build cleanups whitelisted. |
 | [`/freeze`](#safety--guardrails) | **Edit Lock** | Restrict all file edits to a single directory. Blocks Edit and Write outside the boundary. Accident prevention for debugging. |
 | [`/guard`](#safety--guardrails) | **Full Safety** | Combines /careful + /freeze in one command. Maximum safety for prod work. |
 | [`/unfreeze`](#safety--guardrails) | **Unlock** | Remove the /freeze boundary, allowing edits everywhere again. |
@@ -592,11 +592,11 @@ This is my **QA lead mode**.
 
 `/browse` gives the agent eyes. `/qa` gives it a testing methodology.
 
-The most common use case: you're on a feature branch, you just finished coding, and you want to verify everything works. Just say `/qa` — it reads your git diff, identifies which pages and routes your changes affect, spins up the browser, and tests each one. No URL required. No manual test plan.
+The most common use case: you're on a feature branch, you just finished coding, and you want to verify everything works. Just say `/qa` — it reads your jj diff, identifies which pages and routes your changes affect, spins up the browser, and tests each one. No URL required. No manual test plan.
 
 Four modes:
 
-- **Diff-aware** (automatic on feature branches) — reads `git diff main`, identifies affected pages, tests them specifically
+- **Diff-aware** (automatic on feature branches) — reads `jj diff --from main@origin --to @`, identifies affected pages, tests them specifically
 - **Full** — systematic exploration of the entire app. 5-15 minutes. Documents 5-10 well-evidenced issues.
 - **Quick** (`--quick`) — 30-second smoke test. Homepage + top 5 nav targets.
 - **Regression** (`--regression baseline.json`) — run full mode, then diff against a previous baseline.
@@ -1059,6 +1059,7 @@ Say "be careful" or run `/careful` when you're working near production, running 
 - `DROP TABLE` / `DROP DATABASE` / `TRUNCATE` — data loss
 - `git push --force` / `git push -f` — history rewrite
 - `git reset --hard` — discard commits
+- `jj abandon` — abandon work
 - `git checkout .` / `git restore .` — discard uncommitted work
 - `kubectl delete` — production resource deletion
 - `docker rm -f` / `docker system prune` — container/image loss

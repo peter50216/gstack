@@ -35,7 +35,7 @@ Key routing rules:
 - Resume context → invoke /context-restore
 \`\`\`
 
-Then commit the change: \`git add CLAUDE.md && git commit -m "chore: add gstack skill routing rules to CLAUDE.md"\`
+Then commit the change: \`jj commit CLAUDE.md -m "chore: add gstack skill routing rules to CLAUDE.md"\`
 
 If B: run \`${ctx.paths.binDir}/gstack-config set routing_declined true\` and say they can re-enable with \`gstack-config set routing_declined false\`.
 

@@ -273,7 +273,7 @@ in flight. Stale locks (process died) auto-clear after 5 minutes.
 ## Cross-machine note
 
 The `## GBrain Search Guidance` block is committed to the repo's CLAUDE.md
-and travels with `git push`/`git pull` — NOT through `~/.gstack/.brain-allowlist`
+and travels with your normal VCS push/pull — NOT through `~/.gstack/.brain-allowlist`
 (which is for `~/.gstack/` brain-sync only). On a different Mac with a synced
 CLAUDE.md but no local gbrain, /sync-gbrain detects the mismatch via the
 capability check and REMOVES the block (the local agent shouldn't be told to

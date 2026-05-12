@@ -1051,7 +1051,7 @@ describe('Test Bootstrap ({{TEST_BOOTSTRAP}}) integration', () => {
   test('bootstrap includes first real tests step', () => {
     const content = fs.readFileSync(path.join(ROOT, 'qa', 'SKILL.md'), 'utf-8');
     expect(content).toContain('First real tests');
-    expect(content).toContain('git log --since=30.days');
+    expect(content).toContain('jj log -r \'committer_date(after:"30 days ago")\'');
     expect(content).toContain('Prioritize by risk');
   });
 
@@ -1688,9 +1688,9 @@ describe('Test failure triage in ship skill', () => {
     expect(content).toContain('Test Failure Ownership Triage');
   });
 
-  test('ship/SKILL.md triage uses git diff for classification', () => {
+  test('ship/SKILL.md triage uses jj diff for classification', () => {
     const content = fs.readFileSync(path.join(ROOT, 'ship', 'SKILL.md'), 'utf-8');
-    expect(content).toContain('git diff origin/<base>...HEAD --name-only');
+    expect(content).toContain('jj diff --from <base>@origin --to @ --name-only');
   });
 
   test('ship/SKILL.md triage has solo and collaborative paths', () => {

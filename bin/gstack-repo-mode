@@ -13,7 +13,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Compute SLUG directly (avoid eval of gstack-slug — branch names can contain shell metacharacters)
-REMOTE_URL=$(git remote get-url origin 2>/dev/null || true)
+REMOTE_URL=$(jj git remote list 2>/dev/null | awk '$1=="origin"{print $2}' | head -1 || true)
+[ -z "$REMOTE_URL" ] && REMOTE_URL=$(git remote get-url origin 2>/dev/null || true)
 if [ -z "$REMOTE_URL" ]; then
   echo "REPO_MODE=unknown"
   exit 0

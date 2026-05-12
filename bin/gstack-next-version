@@ -115,7 +115,14 @@ function runCommand(cmd: string, args: string[], timeoutMs = 15000): { ok: boole
 }
 
 function detectHost(): "github" | "gitlab" | "unknown" {
-  const remote = runCommand("git", ["remote", "get-url", "origin"]);
+  let remote = runCommand("jj", ["git", "remote", "list"]);
+  if (remote.ok) {
+    const originLine = remote.stdout.split("\n").find((line) => line.startsWith("origin "));
+    const url = originLine?.split(/\s+/)[1] ?? "";
+    if (url.includes("github.com")) return "github";
+    if (url.includes("gitlab")) return "gitlab";
+  }
+  remote = runCommand("git", ["remote", "get-url", "origin"]);
   if (remote.ok) {
     const url = remote.stdout.trim();
     if (url.includes("github.com")) return "github";
@@ -129,12 +136,13 @@ function detectHost(): "github" | "gitlab" | "unknown" {
 }
 
 function readBaseVersion(base: string, warnings: string[]): string {
-  // git fetch is best-effort; we tolerate failure and fall back to whatever
-  // origin/<base> currently points at.
-  runCommand("git", ["fetch", "origin", base, "--quiet"], 10000);
-  const r = runCommand("git", ["show", `origin/${base}:VERSION`]);
+  // jj/git fetch is best-effort; we tolerate failure and fall back to whatever
+  // <base>@origin currently points at.
+  runCommand("jj", ["git", "fetch", "--remote", "origin", "--branch", base], 10000);
+  let r = runCommand("jj", ["file", "show", "-r", `${base}@origin`, "VERSION"]);
+  if (!r.ok) r = runCommand("git", ["show", `origin/${base}:VERSION`]);
   if (!r.ok) {
-    warnings.push(`could not read VERSION at origin/${base}; assuming 0.0.0.0`);
+    warnings.push(`could not read VERSION at ${base}@origin; assuming 0.0.0.0`);
     return "0.0.0.0";
   }
   return r.stdout.trim();

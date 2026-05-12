@@ -78,13 +78,13 @@ If multiple runtimes detected (monorepo) → ask which runtime to set up first, 
 3. Create directory structure (test/, spec/, etc.)
 4. Create one example test matching the project's code to verify setup works
 
-If package installation fails → debug once. If still failing → revert with \`git checkout -- package.json package-lock.json\` (or equivalent for the runtime). Warn user and continue without tests.
+If package installation fails → debug once. If still failing → revert with \`jj restore package.json package-lock.json\` (or equivalent for the runtime). Warn user and continue without tests.
 
 ### B4.5. First real tests
 
 Generate 3-5 real tests for existing code:
 
-1. **Find recently changed files:** \`git log --since=30.days --name-only --format="" | sort | uniq -c | sort -rn | head -10\`
+1. **Find recently changed files:** \`jj log -r 'committer_date(after:"30 days ago")' --name-only --no-graph | sort | uniq -c | sort -rn | head -10\`
 2. **Prioritize by risk:** Error handlers > business logic with conditionals > API endpoints > pure functions
 3. **For each file:** Write one test that tests real behavior with meaningful assertions. Never \`expect(x).toBeDefined()\` — test what the code DOES.
 4. Run each test. Passes → keep. Fails → fix once. Still fails → delete silently.
@@ -147,11 +147,11 @@ Append a \`## Testing\` section:
 ### B8. Commit
 
 \`\`\`bash
-git status --porcelain
+jj status
 \`\`\`
 
-Only commit if there are changes. Stage all bootstrap files (config, test directory, TESTING.md, CLAUDE.md, .github/workflows/test.yml if created):
-\`git commit -m "chore: bootstrap test framework ({framework name})"\`
+Only commit if there are changes. Commit only the bootstrap paths (config, test directory, TESTING.md, CLAUDE.md, .github/workflows/test.yml if created):
+\`jj commit <bootstrap-files> -m "chore: bootstrap test framework ({framework name})"\`
 
 ---`;
 }
@@ -233,7 +233,7 @@ Store this number for the PR body.`);
     ? `**Step 1. Trace every codepath in the plan:**
 
 Read the plan document. For each new feature, service, endpoint, or component described, trace how data will flow through the code — don't just list planned functions, actually follow the planned execution:`
-    : `**${mode === 'ship' ? '1' : 'Step 1'}. Trace every codepath changed** using \`git diff origin/<base>...HEAD\`:
+    : `**${mode === 'ship' ? '1' : 'Step 1'}. Trace every codepath changed** using \`jj diff --from <base>@origin --to @ --git\`:
 
 Read every changed file. For each one, trace how data flows through the code — don't just list functions, actually follow the execution:`;
 

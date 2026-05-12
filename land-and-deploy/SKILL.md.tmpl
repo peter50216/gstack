@@ -333,9 +333,9 @@ If timeout (15 min): **STOP.** "CI has been running for over 15 minutes — that
 Before gathering readiness evidence, verify that the VERSION this PR claims is still the next free slot. A sibling workspace may have shipped and landed since `/ship` ran, leaving this PR's VERSION stale.
 
 ```bash
-BRANCH_VERSION=$(git show HEAD:VERSION 2>/dev/null | tr -d '\r\n[:space:]' || echo "")
+BRANCH_VERSION=$(jj file show VERSION 2>/dev/null | tr -d '\r\n[:space:]' || echo "")
 BASE_BRANCH=$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || echo main)
-BASE_VERSION=$(git show origin/$BASE_BRANCH:VERSION 2>/dev/null | tr -d '\r\n[:space:]' || echo "")
+BASE_VERSION=$(jj file show -r "$BASE_BRANCH@origin" VERSION 2>/dev/null | tr -d '\r\n[:space:]' || echo "")
 
 # Imply bump level by comparing branch VERSION to base (crude but good enough for drift detection)
 # We don't need the exact original level — we just need "a level" that passes to the util.
@@ -393,7 +393,7 @@ codex-plan-review):
 
 1. Find the most recent entry within the last 7 days.
 2. Extract its `commit` field.
-3. Compare against current HEAD: `git rev-list --count STORED_COMMIT..HEAD`
+3. Compare against the current working-copy commit: `jj log -r 'commit_id(STORED_COMMIT)..@' --count`
 
 **Staleness rules:**
 - 0 commits since review → CURRENT
@@ -403,7 +403,7 @@ codex-plan-review):
 
 **Critical check:** Look at what changed AFTER the last review. Run:
 ```bash
-git log --oneline STORED_COMMIT..HEAD
+jj log -r 'commit_id(STORED_COMMIT)..@' --no-graph
 ```
 If any commits after the review contain words like "fix", "refactor", "rewrite",
 "overhaul", or touch more than 5 files — flag as **STALE (significant changes
@@ -494,7 +494,7 @@ gh pr view --json body -q .body
 
 Read the current diff summary:
 ```bash
-git log --oneline $(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || echo main)..HEAD | head -20
+jj log -r "$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || echo main)@origin..@" --no-graph | head -20
 ```
 
 Compare the PR body against the actual commits. Check for:
@@ -510,12 +510,12 @@ changes.** List what's missing or stale.
 Check if documentation was updated on this branch:
 
 ```bash
-git log --oneline --all-match --grep="docs:" $(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || echo main)..HEAD | head -5
+jj log -r "$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || echo main)@origin..@ & description(glob:\"docs:*\")" --no-graph | head -5
 ```
 
 Also check if key doc files were modified:
 ```bash
-git diff --name-only $(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || echo main)...HEAD -- README.md CHANGELOG.md ARCHITECTURE.md CONTRIBUTING.md CLAUDE.md VERSION
+jj diff --name-only --from "$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || echo main)@origin" --to @ -- README.md CHANGELOG.md ARCHITECTURE.md CONTRIBUTING.md CLAUDE.md VERSION
 ```
 
 If CHANGELOG.md and VERSION were NOT modified on this branch and the diff includes
@@ -857,13 +857,13 @@ If the user chose to revert at any point:
 Tell the user: "Reverting the merge now. This will create a new commit that undoes all the changes from this PR. The previous version of your site will be restored once the revert deploys."
 
 ```bash
-git fetch origin <base>
-git checkout <base>
-git revert <merge-commit-sha> --no-edit
-git push origin <base>
+jj git fetch --remote origin --branch <base>
+jj new <base>@origin
+jj revert -r <merge-commit-sha> --onto @
+jj git push --remote origin --bookmark <base>
 ```
 
-If the revert has conflicts: "The revert has merge conflicts — this can happen if other changes landed on {base} after your merge. You'll need to resolve the conflicts manually. The merge commit SHA is `<sha>` — run `git revert <sha>` to try again."
+If the revert has conflicts: "The revert has conflicts — this can happen if other changes landed on {base} after your merge. You'll need to resolve the conflicts manually. The merge commit SHA is `<sha>` — run `jj revert -r <sha> --onto @` to try again."
 
 If the base branch has push protections: "This repo has branch protections, so I can't push the revert directly. I'll create a revert PR instead — merge it to roll back."
 Then create a revert PR: `gh pr create --title 'revert: <original PR title>'`

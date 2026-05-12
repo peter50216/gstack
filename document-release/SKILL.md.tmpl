@@ -64,21 +64,21 @@ subjective decisions.
 2. Gather context about what changed:
 
 ```bash
-git diff <base>...HEAD --stat
+jj diff --from <base>@origin --to @ --stat
 ```
 
 ```bash
-git log <base>..HEAD --oneline
+jj log -r '<base>@origin..@' --no-graph
 ```
 
 ```bash
-git diff <base>...HEAD --name-only
+jj diff --from <base>@origin --to @ --name-only
 ```
 
 3. Discover all documentation files in the repo:
 
 ```bash
-find . -maxdepth 2 -name "*.md" -not -path "./.git/*" -not -path "./node_modules/*" -not -path "./.gstack/*" -not -path "./.context/*" | sort
+find . -maxdepth 2 -name "*.md" -not -path "./.git/*" -not -path "./.jj/*" -not -path "./node_modules/*" -not -path "./.gstack/*" -not -path "./.context/*" | sort
 ```
 
 4. Classify the changes into categories relevant to documentation:
@@ -239,7 +239,7 @@ If TODOS.md does not exist, skip this step.
 2. Check if VERSION was already modified on this branch:
 
 ```bash
-git diff <base>...HEAD -- VERSION
+jj diff --from <base>@origin --to @ -- VERSION
 ```
 
 3. **If VERSION was NOT bumped:** Use AskUserQuestion:
@@ -252,7 +252,7 @@ git diff <base>...HEAD -- VERSION
    still covers the full scope of changes on this branch:
 
    a. Read the CHANGELOG entry for the current VERSION. What features does it describe?
-   b. Read the full diff (`git diff <base>...HEAD --stat` and `git diff <base>...HEAD --name-only`).
+   b. Read the full diff (`jj diff --from <base>@origin --to @ --stat` and `jj diff --from <base>@origin --to @ --name-only`).
       Are there significant changes (new features, new skills, new commands, major refactors)
       that are NOT mentioned in the CHANGELOG entry for the current version?
    c. **If the CHANGELOG entry covers everything:** Skip — output "VERSION: Already bumped to
@@ -271,17 +271,17 @@ git diff <base>...HEAD -- VERSION
 
 ## Step 9: Commit & Output
 
-**Empty check first:** Run `git status` (never use `-uall`). If no documentation files were
+**Empty check first:** Run `jj status`. If no documentation files were
 modified by any previous step, output "All documentation is up to date." and exit without
 committing.
 
 **Commit:**
 
-1. Stage modified documentation files by name (never `git add -A` or `git add .`).
+1. Commit modified documentation files by name.
 2. Create a single commit:
 
 ```bash
-git commit -m "$(cat <<'EOF'
+jj commit <doc-files> -m "$(cat <<'EOF'
 docs: update project documentation for vX.Y.Z.W
 
 {{CO_AUTHOR_TRAILER}}
@@ -292,7 +292,7 @@ EOF
 3. Push to the current branch:
 
 ```bash
-git push
+jj git push --remote origin
 ```
 
 **PR/MR body update (idempotent, race-safe):**

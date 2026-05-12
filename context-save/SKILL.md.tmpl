@@ -3,7 +3,7 @@ name: context-save
 preamble-tier: 2
 version: 1.0.0
 description: |
-  Save working context. Captures git state, decisions made, and remaining work
+  Save working context. Captures VCS state, decisions made, and remaining work
   so any future session can pick up without losing a beat.
   Use when asked to "save progress", "save state", "context save", or
   "save my work". Pair with /context-restore to resume later.
@@ -64,15 +64,13 @@ Collect the current working state:
 
 ```bash
 echo "=== BRANCH ==="
-git rev-parse --abbrev-ref HEAD 2>/dev/null
+jj log -r @ --no-graph -T 'bookmarks.join(",") ++ change_id.short() ++ "\n"' 2>/dev/null
 echo "=== STATUS ==="
-git status --short 2>/dev/null
+jj status 2>/dev/null
 echo "=== DIFF STAT ==="
-git diff --stat 2>/dev/null
-echo "=== STAGED DIFF STAT ==="
-git diff --cached --stat 2>/dev/null
+jj diff --stat 2>/dev/null
 echo "=== RECENT LOG ==="
-git log --oneline -10 2>/dev/null
+jj log -n 10 --no-graph 2>/dev/null
 ```
 
 ### Step 2: Summarize context
@@ -179,8 +177,7 @@ files_modified:
 {Gotchas, blocked items, open questions, things tried that didn't work}
 ```
 
-The `files_modified` list comes from `git status --short` (both staged and unstaged
-modified files). Use relative paths from the repo root.
+The `files_modified` list comes from `jj status`. Use relative paths from the repo root.
 
 After writing, confirm to the user:
 
@@ -266,7 +263,7 @@ If there are no saved contexts, tell the user: "No saved contexts yet. Run
   `/context-restore`.
 - **Saved files are append-only.** Never overwrite or delete existing files. Each
   save creates a new file.
-- **Infer, don't interrogate.** Use git state and conversation context to fill in
+- **Infer, don't interrogate.** Use jj state and conversation context to fill in
   the file. Only use AskUserQuestion if the title genuinely cannot be inferred.
 - **This is a gstack skill, not a Claude Code built-in.** When the user types
   `/context-save`, invoke this skill via the Skill tool. The old `/checkpoint`

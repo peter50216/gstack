@@ -65,7 +65,7 @@ interface TasteProfile {
 
 function getSlug(): string {
   try {
-    const output = execSync('git rev-parse --show-toplevel', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    const output = execSync('jj root 2>/dev/null || git rev-parse --show-toplevel', { stdio: ['ignore', 'pipe', 'ignore'], shell: '/bin/sh' }).toString().trim();
     return path.basename(output);
   } catch {
     return 'unknown';
