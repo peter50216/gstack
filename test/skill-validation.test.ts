@@ -1884,3 +1884,58 @@ describe('Bundled browser-skills frontmatter contract', () => {
     }
   });
 });
+
+describe('VCS guidance (jj-only)', () => {
+  // The vcs-guidance resolver tells skills to prefer jj and forbids git fallbacks.
+  // It's wired into the tier ≥ 2 preamble, so tier-2/3/4 skills should carry the
+  // section, and tier-1 skills (browse, setup-cookies, benchmark) should not.
+
+  const TIER_GE_2_SAMPLES = ['ship', 'review', 'qa', 'investigate', 'plan-ceo-review'];
+  const TIER_1_SAMPLES = ['browse', 'setup-browser-cookies', 'benchmark'];
+
+  for (const skill of TIER_GE_2_SAMPLES) {
+    test(`${skill}/SKILL.md includes the Version Control Preference section`, () => {
+      const content = fs.readFileSync(path.join(ROOT, skill, 'SKILL.md'), 'utf-8');
+      expect(content).toContain('## Version Control Preference');
+      expect(content).toContain('Jujutsu-only');
+      // Critical jj translation rules
+      expect(content).toContain('jj diff --from <base>@origin --to @');
+      expect(content).toContain('jj bookmark set <name> -r @-');
+    });
+  }
+
+  for (const skill of TIER_1_SAMPLES) {
+    test(`${skill}/SKILL.md does NOT include the Version Control Preference section`, () => {
+      const content = fs.readFileSync(path.join(ROOT, skill, 'SKILL.md'), 'utf-8');
+      expect(content).not.toContain('## Version Control Preference');
+    });
+  }
+
+  test('no jj→git fallback patterns remain in resolvers or templates', () => {
+    // Catches regressions where someone re-introduces `jj cmd || git cmd`.
+    // Allow-list: nothing — production code paths should be jj-only.
+    const fallbackPattern = /jj\s+[^\n|]+\|\|\s+git\s/;
+    const dirs = [path.join(ROOT, 'scripts'), path.join(ROOT, 'bin')];
+    const offenders: string[] = [];
+    for (const dir of dirs) {
+      walkFiles(dir, (file) => {
+        if (!/\.(ts|tmpl|sh)$|^[a-z0-9-]+$/.test(path.basename(file))) return;
+        // Skip the gstack-session-update path — gstack's own install auto-updater
+        // legitimately manages a git checkout per the VCS guidance carve-out.
+        if (file.endsWith('gstack-session-update')) return;
+        const content = fs.readFileSync(file, 'utf-8');
+        if (fallbackPattern.test(content)) offenders.push(file);
+      });
+    }
+    expect(offenders).toEqual([]);
+  });
+});
+
+function walkFiles(dir: string, fn: (file: string) => void): void {
+  if (!fs.existsSync(dir)) return;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) walkFiles(full, fn);
+    else if (entry.isFile()) fn(full);
+  }
+}

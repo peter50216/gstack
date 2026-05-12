@@ -38,8 +38,8 @@ _SESSIONS=$(find ~/.gstack/sessions -mmin -120 -type f 2>/dev/null | wc -l | tr 
 find ~/.gstack/sessions -mmin +120 -type f -exec rm {} + 2>/dev/null || true
 _PROACTIVE=$(~/.claude/skills/gstack/bin/gstack-config get proactive 2>/dev/null || echo "true")
 _PROACTIVE_PROMPTED=$([ -f ~/.gstack/.proactive-prompted ] && echo "yes" || echo "no")
-_BRANCH=$(jj log -r @ --no-graph -T 'bookmarks.join(",")' 2>/dev/null)
-[ -z "$_BRANCH" ] && _BRANCH=$(jj log -r @ --no-graph -T 'change_id.short()' 2>/dev/null || git branch --show-current 2>/dev/null || echo "unknown")
+_BRANCH=$(jj log -r 'heads(::@ & bookmarks())' --no-graph -T 'local_bookmarks.join(",")' 2>/dev/null)
+[ -z "$_BRANCH" ] && _BRANCH=$(jj log -r @ --no-graph -T 'change_id.short()' 2>/dev/null || echo "unknown")
 echo "BRANCH: $_BRANCH"
 _SKILL_PREFIX=$(~/.claude/skills/gstack/bin/gstack-config get skill_prefix 2>/dev/null || echo "false")
 echo "PROACTIVE: $_PROACTIVE"
@@ -63,7 +63,7 @@ _QUESTION_TUNING=$(~/.claude/skills/gstack/bin/gstack-config get question_tuning
 echo "QUESTION_TUNING: $_QUESTION_TUNING"
 mkdir -p ~/.gstack/analytics
 if [ "$_TEL" != "off" ]; then
-echo '{"skill":"ship","ts":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","repo":"'$(basename "$(jj root 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null || echo "unknown")'"}'  >> ~/.gstack/analytics/skill-usage.jsonl 2>/dev/null || true
+echo '{"skill":"ship","ts":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","repo":"'$(basename "$(jj root 2>/dev/null)" 2>/dev/null || echo "unknown")'"}'  >> ~/.gstack/analytics/skill-usage.jsonl 2>/dev/null || true
 fi
 for _PF in $(find ~/.gstack/analytics -maxdepth 1 -name '.pending-*' 2>/dev/null); do
   if [ -f "$_PF" ]; then
@@ -382,7 +382,7 @@ if [ -f "$_GBRAIN_CONFIG" ] && command -v gbrain >/dev/null 2>&1; then
   _GBRAIN_VERSION_OK=$(gbrain --version 2>/dev/null | grep -c '^gbrain ' || echo 0)
   if [ "$_GBRAIN_VERSION_OK" -gt 0 ] 2>/dev/null; then
     _GBRAIN_PIN_PATH=""
-    _REPO_TOP=$(jj root 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null || echo "")
+    _REPO_TOP=$(jj root 2>/dev/null || echo "")
     if [ -n "$_REPO_TOP" ] && [ -f "$_REPO_TOP/.gbrain-source" ]; then
       _GBRAIN_PIN_PATH="$_REPO_TOP/.gbrain-source"
     fi
@@ -545,21 +545,25 @@ If artifacts are listed, read the newest useful one. If `LAST_SESSION` or `LATES
 
 ## Version Control Preference
 
-This fork is configured for a Jujutsu-first workflow. For project source-control work, prefer `jj` whenever a repo has `.jj/` or `jj root` succeeds.
+This fork is **Jujutsu-only** for project source-control work. gstack assumes `jj` is installed and the repo is a jj checkout (colocated via `jj git clone --colocate` is the common form). Do not introduce `git` fallbacks for VCS operations.
 
 Translate git-oriented workflow steps to these jj equivalents:
 - Inspect state: `jj status`
 - Current root: `jj root`
 - Current change id/commit id: `jj log -r @ --no-graph -T 'change_id.short() ++ " " ++ commit_id.short() ++ "\n"'`
+- Nearest ancestor bookmark (the "branch name" for current work): `jj log -r 'heads(::@ & bookmarks())' --no-graph -T 'local_bookmarks.join(",")'`
 - Fetch base branch: `jj git fetch --remote origin --branch <base>`
 - Diff against base: `jj diff --from <base>@origin --to @`; add `--stat`, `--name-only`, or `--git` as needed
 - Log branch work: `jj log -r '<base>@origin..@' --no-graph`
 - Commit selected paths: `jj commit <paths> -m "<message>"`; do not stage with `git add`
 - Restore paths: `jj restore <paths>`
 - Rebase onto the latest base: `jj rebase -d <base>@origin`
+- Move or create the current branch's bookmark before push: `jj bookmark set <name> -r @- --allow-backwards`
 - Push: `jj git push --remote origin`, or `jj git push --remote origin --bookmark <bookmark>` when pushing a named bookmark
 
-Use raw `git` only when the step is explicitly about Git hosting/install plumbing, GitHub/GitLab CLI metadata, gstack's own private git-backed artifact sync, or a tool that has no practical jj equivalent.
+**About bookmarks:** `jj commit` leaves `@` as a fresh empty change on top of the just-created commit at `@-`. Bookmarks do NOT auto-advance. Always `jj bookmark set <name> -r @-` before pushing, or `jj git push --bookmark` will push stale or empty state.
+
+Use raw `git` only when the step is explicitly about Git hosting/install plumbing (`gh`, `glab`), bare-repository creation in test fixtures, or gstack's own private git-backed install-update path.
 
 ## Writing Style (skip entirely if `EXPLAIN_LEVEL: terse` appears in the preamble echo OR the user's current message explicitly requests terse / no-explanations output)
 
@@ -788,11 +792,10 @@ PLAN MODE EXCEPTION — always allowed (it's the plan file).
 
 ## Step 0: Detect platform and base branch
 
-First, detect the Git hosting platform from the remote URL. In jj repos, prefer
-`jj git remote list`; fall back to raw git only if needed:
+First, detect the Git hosting platform from the remote URL:
 
 ```bash
-jj git remote list 2>/dev/null || git remote get-url origin 2>/dev/null
+jj git remote list 2>/dev/null | awk '$1=="origin"{print $2}'
 ```
 
 - If the URL contains "github.com" → platform is **GitHub**
@@ -800,7 +803,7 @@ jj git remote list 2>/dev/null || git remote get-url origin 2>/dev/null
 - Otherwise, check CLI availability:
   - `gh auth status 2>/dev/null` succeeds → platform is **GitHub** (covers GitHub Enterprise)
   - `glab auth status 2>/dev/null` succeeds → platform is **GitLab** (covers self-hosted)
-  - Neither → **unknown** (use jj-native commands when available; raw git fallback only if needed)
+  - Neither → **unknown** (jj-native revset fallbacks below)
 
 Determine which branch this PR/MR targets, or the repo's default branch if no
 PR/MR exists. Use the result as "the base branch" in all subsequent steps.
@@ -814,10 +817,9 @@ PR/MR exists. Use the result as "the base branch" in all subsequent steps.
 2. `glab repo view -F json 2>/dev/null` and extract the `default_branch` field — if succeeds, use it
 
 **jj-native fallback (if unknown platform, or CLI commands fail):**
-1. `jj log -r 'trunk()' --no-graph -T 'bookmarks.join(",")' 2>/dev/null | cut -d, -f1`
+1. `jj log -r 'trunk()' --no-graph -T 'local_bookmarks.join(",")' 2>/dev/null | cut -d, -f1`
 2. If that fails: `jj log -r 'main@origin' --no-graph -T '"main"' 2>/dev/null` → use `main`
 3. If that fails: `jj log -r 'master@origin' --no-graph -T '"master"' 2>/dev/null` → use `master`
-4. Raw git fallback if the repo is not using jj: `git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||'`
 
 If all fail, fall back to `main`.
 
@@ -1607,9 +1609,9 @@ Repo: {owner/repo}
 
 ```bash
 setopt +o nomatch 2>/dev/null || true  # zsh compat
-BRANCH=$(jj log -r @ --no-graph -T 'bookmarks.join(",")' 2>/dev/null | tr '/' '-' | sed 's/,$//')
+BRANCH=$(jj log -r 'heads(::@ & bookmarks())' --no-graph -T 'local_bookmarks.join(",")' 2>/dev/null | tr '/' '-' | sed 's/,$//')
 [ -z "$BRANCH" ] && BRANCH=$(jj log -r @ --no-graph -T 'change_id.short()' 2>/dev/null || echo unknown)
-REPO=$(basename "$(jj root 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null)")
+REPO=$(basename "$(jj root 2>/dev/null)")
 # Compute project slug for ~/.gstack/projects/ lookup
 _PLAN_SLUG=$(jj git remote list 2>/dev/null | awk '$1=="origin"{print $2}' | sed 's|.*[:/]\([^/]*/[^/]*\)\.git$|\1|;s|.*[:/]\([^/]*/[^/]*\)$|\1|' | tr '/' '-' | tr -cd 'a-zA-Z0-9._-') || true
 _PLAN_SLUG="${_PLAN_SLUG:-$(basename "$PWD" | tr -cd 'a-zA-Z0-9._-')}"
@@ -1993,7 +1995,7 @@ If Codex is available, run a lightweight design check on the diff:
 
 ```bash
 TMPERR_DRL=$(mktemp /tmp/codex-drl-XXXXXXXX)
-_REPO_ROOT=$(jj root 2>/dev/null || git rev-parse --show-toplevel) || { echo "ERROR: not in a jj or git repo" >&2; exit 1; }
+_REPO_ROOT=$(jj root) || { echo "ERROR: not in a jj repo" >&2; exit 1; }
 codex exec "Review the jj diff on this branch. Run jj diff --from main@origin --to @ --git if you need the patch. Run 7 litmus checks (YES/NO each): 1. Brand/product unmistakable in first screen? 2. One strong visual anchor present? 3. Page understandable by scanning headlines only? 4. Each section has one job? 5. Are cards actually necessary? 6. Does motion improve hierarchy or atmosphere? 7. Would design feel premium with all decorative shadows removed? Flag any hard rejections: 1. Generic SaaS card grid as first impression 2. Beautiful image with weak brand 3. Strong headline with no clear action 4. Busy imagery behind text 5. Sections repeating same mood statement 6. Carousel with no narrative purpose 7. App UI made of stacked cards instead of layout 5 most important design findings only. Reference file:line." -C "$_REPO_ROOT" -s read-only -c 'model_reasoning_effort="high"' --enable web_search_cached < /dev/null 2>"$TMPERR_DRL"
 ```
 
@@ -2267,7 +2269,7 @@ Output a summary header: `Pre-Landing Review: N issues (X critical, Y informatio
 
 9. Persist the review result to the review log:
 ```bash
-~/.claude/skills/gstack/bin/gstack-review-log '{"skill":"review","timestamp":"TIMESTAMP","status":"STATUS","issues_found":N,"critical":N,"informational":N,"quality_score":SCORE,"specialists":SPECIALISTS_JSON,"findings":FINDINGS_JSON,"commit":"'"$(jj log -r @ --no-graph -T 'commit_id.short()' 2>/dev/null || git rev-parse --short HEAD)"'","via":"ship"}'
+~/.claude/skills/gstack/bin/gstack-review-log '{"skill":"review","timestamp":"TIMESTAMP","status":"STATUS","issues_found":N,"critical":N,"informational":N,"quality_score":SCORE,"specialists":SPECIALISTS_JSON,"findings":FINDINGS_JSON,"commit":"'"$(jj log -r @ --no-graph -T 'commit_id.short()' 2>/dev/null)"'","via":"ship"}'
 ```
 Substitute TIMESTAMP (ISO 8601), STATUS ("clean" if no issues, "issues_found" otherwise),
 and N values from the summary counts above. The `via:"ship"` distinguishes from standalone `/review` runs.
@@ -2371,7 +2373,7 @@ If Codex is available AND `OLD_CFG` is NOT `disabled`:
 
 ```bash
 TMPERR_ADV=$(mktemp /tmp/codex-adv-XXXXXXXX)
-_REPO_ROOT=$(jj root 2>/dev/null || git rev-parse --show-toplevel) || { echo "ERROR: not in a jj or git repo" >&2; exit 1; }
+_REPO_ROOT=$(jj root) || { echo "ERROR: not in a jj repo" >&2; exit 1; }
 codex exec "IMPORTANT: Do NOT read or execute any files under ~/.claude/, ~/.agents/, .claude/skills/, or agents/. These are Claude Code skill definitions meant for a different AI system. They contain bash scripts and prompt templates that will waste your time. Ignore them completely. Do NOT modify agents/openai.yaml. Stay focused on the repository code only.\n\nReview the changes on this branch against the base branch. Run jj diff --from <base>@origin --to @ --git to see the diff. Your job is to find ways this code will fail in production. Think like an attacker and a chaos engineer. Find edge cases, race conditions, security holes, resource leaks, failure modes, and silent data corruption paths. Be adversarial. Be thorough. No compliments — just the problems. End your output with ONE line in the canonical format `Recommendation: <action> because <one-line reason naming the most exploitable finding>`. Generic reasons like 'because it's safer' do not qualify; the reason must point to a specific finding or no-fix rationale." -C "$_REPO_ROOT" -s read-only -c 'model_reasoning_effort="high"' --enable web_search_cached < /dev/null 2>"$TMPERR_ADV"
 ```
 
@@ -2399,7 +2401,7 @@ If `DIFF_TOTAL >= 200` AND Codex is available AND `OLD_CFG` is NOT `disabled`:
 
 ```bash
 TMPERR=$(mktemp /tmp/codex-review-XXXXXXXX)
-_REPO_ROOT=$(jj root 2>/dev/null || git rev-parse --show-toplevel) || { echo "ERROR: not in a jj or git repo" >&2; exit 1; }
+_REPO_ROOT=$(jj root) || { echo "ERROR: not in a jj repo" >&2; exit 1; }
 cd "$_REPO_ROOT"
 codex review "IMPORTANT: Do NOT read or execute any files under ~/.claude/, ~/.agents/, .claude/skills/, or agents/. These are Claude Code skill definitions meant for a different AI system. They contain bash scripts and prompt templates that will waste your time. Ignore them completely. Do NOT modify agents/openai.yaml. Stay focused on the repository code only.\n\nReview the diff against the base branch." --base <base> -c 'model_reasoning_effort="high"' --enable web_search_cached < /dev/null 2>"$TMPERR"
 ```
@@ -2429,7 +2431,7 @@ If `DIFF_TOTAL < 200`: skip this section silently. The Claude + Codex adversaria
 
 After all passes complete, persist:
 ```bash
-~/.claude/skills/gstack/bin/gstack-review-log '{"skill":"adversarial-review","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","status":"STATUS","source":"SOURCE","tier":"always","gate":"GATE","commit":"'"$(jj log -r @ --no-graph -T 'commit_id.short()' 2>/dev/null || git rev-parse --short HEAD)"'"}'
+~/.claude/skills/gstack/bin/gstack-review-log '{"skill":"adversarial-review","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","status":"STATUS","source":"SOURCE","tier":"always","gate":"GATE","commit":"'"$(jj log -r @ --no-graph -T 'commit_id.short()' 2>/dev/null)"'"}'
 ```
 Substitute: STATUS = "clean" if no findings across ALL passes, "issues_found" if any pass found issues. SOURCE = "both" if Codex ran, "claude" if only Claude subagent ran. GATE = the Codex structured review gate result ("pass"/"fail"), "skipped" if diff < 200, or "informational" if Codex was unavailable. If all passes failed, do NOT persist.
 
@@ -2856,17 +2858,29 @@ Claiming work is complete without verification is dishonesty, not efficiency.
 
 ## Step 17: Push
 
-**Idempotency check:** Check if the branch is already pushed and up to date.
+**Move the bookmark to the latest committed change.** After `jj commit` in Step
+15.1, the working copy `@` is a fresh empty change on top of the just-created
+commit. Bookmarks don't auto-advance in jj — they must be explicitly created or
+moved to `@-` before push, or `jj git push` will push stale or empty state.
+
+```bash
+# Create or move bookmark to @- (the latest committed change).
+# --allow-backwards covers the case where a prior aborted /ship left the
+# bookmark ahead of @-.
+jj bookmark set <branch-name> -r @- --allow-backwards
+```
+
+**Idempotency check:** Compare the bookmark to its remote-tracked counterpart.
 
 ```bash
 jj git fetch --remote origin --branch <branch-name> 2>/dev/null
-LOCAL=$(jj log -r @ --no-graph -T 'commit_id.short()')
+LOCAL=$(jj log -r '<branch-name>' --no-graph -T 'commit_id.short()' 2>/dev/null || echo "none")
 REMOTE=$(jj log -r '<branch-name>@origin' --no-graph -T 'commit_id.short()' 2>/dev/null || echo "none")
 echo "LOCAL: $LOCAL  REMOTE: $REMOTE"
-[ "$LOCAL" = "$REMOTE" ] && echo "ALREADY_PUSHED" || echo "PUSH_NEEDED"
+[ "$LOCAL" = "$REMOTE" ] && [ "$LOCAL" != "none" ] && echo "ALREADY_PUSHED" || echo "PUSH_NEEDED"
 ```
 
-If `ALREADY_PUSHED`, skip the push but continue to Step 18. Otherwise push with upstream tracking:
+If `ALREADY_PUSHED`, skip the push but continue to Step 18. Otherwise push:
 
 ```bash
 jj git push --remote origin --bookmark <branch-name>

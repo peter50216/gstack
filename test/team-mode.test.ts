@@ -191,8 +191,10 @@ describe('gstack-team-init', () => {
 
   beforeEach(() => {
     tmpDir = mkTmpDir();
-    execSync('git init', { cwd: tmpDir });
-    execSync('git commit --allow-empty -m "init"', { cwd: tmpDir });
+    // gstack-team-init requires a jj repo. Colocate so jj-backed tests can
+    // still produce a .git when fixtures need it (vendored-copy migration cases).
+    execSync('jj git init --colocate', { cwd: tmpDir });
+    execSync('jj new -m "init"', { cwd: tmpDir });
   });
 
   afterEach(() => {
@@ -205,11 +207,11 @@ describe('gstack-team-init', () => {
     expect(result.stderr).toContain('Usage');
   });
 
-  test('errors outside a jj or git repo', () => {
+  test('errors outside a jj repo', () => {
     const nonGitDir = mkTmpDir();
     const result = run(`${TEAM_INIT} optional`, { cwd: nonGitDir });
     expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toContain('not in a jj or git repository');
+    expect(result.stderr).toContain('not in a jj repository');
     fs.rmSync(nonGitDir, { recursive: true, force: true });
   });
 
@@ -264,9 +266,8 @@ describe('gstack-team-init', () => {
     fs.mkdirSync(vendoredDir, { recursive: true });
     fs.writeFileSync(path.join(vendoredDir, 'VERSION'), '0.14.0.0');
     fs.writeFileSync(path.join(vendoredDir, 'README.md'), 'vendored');
-    // Track it in git
-    execSync('git add .claude/skills/gstack/', { cwd: tmpDir });
-    execSync('git commit -m "add vendored gstack"', { cwd: tmpDir });
+    // Track it in jj (colocated repo also writes to git index).
+    execSync('jj commit -m "add vendored gstack"', { cwd: tmpDir });
 
     const result = run(`${TEAM_INIT} optional`, { cwd: tmpDir });
     expect(result.exitCode).toBe(0);
@@ -306,8 +307,7 @@ describe('gstack-team-init', () => {
     const vendoredDir = path.join(tmpDir, '.claude', 'skills', 'gstack');
     fs.mkdirSync(vendoredDir, { recursive: true });
     fs.writeFileSync(path.join(vendoredDir, 'VERSION'), '0.14.0.0');
-    execSync('git add .claude/skills/gstack/', { cwd: tmpDir });
-    execSync('git commit -m "add vendored"', { cwd: tmpDir });
+    execSync('jj commit -m "add vendored"', { cwd: tmpDir });
 
     run(`${TEAM_INIT} optional`, { cwd: tmpDir });
 

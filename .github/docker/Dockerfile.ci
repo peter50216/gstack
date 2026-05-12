@@ -35,6 +35,24 @@ RUN for i in 1 2 3; do \
     done \
     && rm -rf /var/lib/apt/lists/*
 
+# Jujutsu (jj) — gstack's required VCS. Install from the upstream musl
+# static binary so the image works on any glibc version. Ubuntu 24.04 doesn't
+# ship a jj package; cargo install would require dragging in the full Rust
+# toolchain. Static binary keeps the layer small.
+ENV JJ_VERSION=0.37.0
+RUN ARCH="$(dpkg --print-architecture)" \
+    && case "$ARCH" in \
+         amd64) JJ_TARGET=x86_64-unknown-linux-musl ;; \
+         arm64) JJ_TARGET=aarch64-unknown-linux-musl ;; \
+         *) echo "unsupported arch: $ARCH" >&2; exit 1 ;; \
+       esac \
+    && curl --retry 5 --retry-delay 5 --retry-connrefused -fsSL \
+         "https://github.com/jj-vcs/jj/releases/download/v${JJ_VERSION}/jj-v${JJ_VERSION}-${JJ_TARGET}.tar.gz" \
+         -o /tmp/jj.tar.gz \
+    && tar -xz -C /usr/local/bin --no-same-owner -f /tmp/jj.tar.gz jj \
+    && rm -f /tmp/jj.tar.gz \
+    && jj --version
+
 # GitHub CLI
 RUN curl --retry 5 --retry-delay 5 --retry-connrefused -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     | gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg \

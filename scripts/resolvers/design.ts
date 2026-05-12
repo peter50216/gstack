@@ -17,7 +17,7 @@ If Codex is available, run a lightweight design check on the diff:
 
 \`\`\`bash
 TMPERR_DRL=$(mktemp /tmp/codex-drl-XXXXXXXX)
-_REPO_ROOT=$(jj root 2>/dev/null || git rev-parse --show-toplevel) || { echo "ERROR: not in a jj or git repo" >&2; exit 1; }
+_REPO_ROOT=$(jj root) || { echo "ERROR: not in a jj repo" >&2; exit 1; }
 codex exec "Review the jj diff on this branch. Run jj diff --from main@origin --to @ --git if you need the patch. Run 7 litmus checks (YES/NO each): ${litmusList} Flag any hard rejections: ${rejectionList} 5 most important design findings only. Reference file:line." -C "$_REPO_ROOT" -s read-only -c 'model_reasoning_effort="high"' --enable web_search_cached < /dev/null 2>"$TMPERR_DRL"
 \`\`\`
 
@@ -526,7 +526,7 @@ If user chooses A, launch both voices simultaneously:
 1. **Codex** (via Bash, \`model_reasoning_effort="medium"\`):
 \`\`\`bash
 TMPERR_SKETCH=$(mktemp /tmp/codex-sketch-XXXXXXXX)
-_REPO_ROOT=$(jj root 2>/dev/null || git rev-parse --show-toplevel) || { echo "ERROR: not in a jj or git repo" >&2; exit 1; }
+_REPO_ROOT=$(jj root) || { echo "ERROR: not in a jj repo" >&2; exit 1; }
 codex exec "For this product approach, provide: a visual thesis (one sentence — mood, material, energy), a content plan (hero → support → detail → CTA), and 2 interaction ideas that change page feel. Apply beautiful defaults: composition-first, brand-first, cardless, poster not document. Be opinionated." -C "$_REPO_ROOT" -s read-only -c 'model_reasoning_effort="medium"' --enable web_search_cached < /dev/null 2>"$TMPERR_SKETCH"
 \`\`\`
 Use a 5-minute timeout (\`timeout: 300000\`). After completion: \`cat "$TMPERR_SKETCH" && rm -f "$TMPERR_SKETCH"\`
@@ -696,7 +696,7 @@ which codex 2>/dev/null && echo "CODEX_AVAILABLE" || echo "CODEX_NOT_AVAILABLE"
 1. **Codex design voice** (via Bash):
 \`\`\`bash
 TMPERR_DESIGN=$(mktemp /tmp/codex-design-XXXXXXXX)
-_REPO_ROOT=$(jj root 2>/dev/null || git rev-parse --show-toplevel) || { echo "ERROR: not in a jj or git repo" >&2; exit 1; }
+_REPO_ROOT=$(jj root) || { echo "ERROR: not in a jj repo" >&2; exit 1; }
 codex exec "${escapedCodexPrompt}" -C "$_REPO_ROOT" -s read-only -c 'model_reasoning_effort="${reasoningEffort}"' --enable web_search_cached < /dev/null 2>"$TMPERR_DESIGN"
 \`\`\`
 Use a 5-minute timeout (\`timeout: 300000\`). After the command completes, read stderr:
@@ -721,7 +721,7 @@ ${synthesisSection}
 
 **Log the result:**
 \`\`\`bash
-${ctx.paths.binDir}/gstack-review-log '{"skill":"design-outside-voices","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","status":"STATUS","source":"SOURCE","commit":"'"$(jj log -r @ --no-graph -T 'commit_id.short()' 2>/dev/null || git rev-parse --short HEAD)"'"}'
+${ctx.paths.binDir}/gstack-review-log '{"skill":"design-outside-voices","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","status":"STATUS","source":"SOURCE","commit":"'"$(jj log -r @ --no-graph -T 'commit_id.short()' 2>/dev/null)"'"}'
 \`\`\`
 Replace STATUS with "clean" or "issues_found", SOURCE with "codex+subagent", "codex-only", "subagent-only", or "unavailable".`;
 }
@@ -789,7 +789,7 @@ export function generateDesignSetup(ctx: TemplateContext): string {
   return `## DESIGN SETUP (run this check BEFORE any design mockup command)
 
 \`\`\`bash
-_ROOT=$(jj root 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null)
+_ROOT=$(jj root 2>/dev/null)
 D=""
 [ -n "$_ROOT" ] && [ -x "$_ROOT/${ctx.paths.localSkillRoot}/design/dist/design" ] && D="$_ROOT/${ctx.paths.localSkillRoot}/design/dist/design"
 [ -z "$D" ] && D="$HOME${ctx.paths.designDir.replace(/^~/, '')}/design"
@@ -834,7 +834,7 @@ export function generateDesignMockup(ctx: TemplateContext): string {
   return `## Visual Design Exploration
 
 \`\`\`bash
-_ROOT=$(jj root 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null)
+_ROOT=$(jj root 2>/dev/null)
 D=""
 [ -n "$_ROOT" ] && [ -x "$_ROOT/${ctx.paths.localSkillRoot}/design/dist/design" ] && D="$_ROOT/${ctx.paths.localSkillRoot}/design/dist/design"
 [ -z "$D" ] && D="$HOME${ctx.paths.designDir.replace(/^~/, '')}/design"

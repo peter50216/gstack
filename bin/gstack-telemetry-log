@@ -155,11 +155,9 @@ fi
 # Local-only fields (never sent remotely)
 REPO_SLUG=""
 BRANCH=""
-if command -v jj >/dev/null 2>&1 || command -v git >/dev/null 2>&1; then
+if command -v jj >/dev/null 2>&1; then
   REPO_SLUG="$(jj git remote list 2>/dev/null | awk '$1=="origin"{print $2}' | sed 's|.*[:/]\([^/]*/[^/]*\)\.git$|\1|;s|.*[:/]\([^/]*/[^/]*\)$|\1|' | tr '/' '-' 2>/dev/null || true)"
-  [ -z "$REPO_SLUG" ] && REPO_SLUG="$(git remote get-url origin 2>/dev/null | sed 's|.*[:/]\([^/]*/[^/]*\)\.git$|\1|;s|.*[:/]\([^/]*/[^/]*\)$|\1|' | tr '/' '-' 2>/dev/null || true)"
-  BRANCH="$(jj log -r @ --no-graph -T 'bookmarks.join(",")' 2>/dev/null || true)"
-  [ -z "$BRANCH" ] && BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  BRANCH="$(jj log -r 'heads(::@ & bookmarks())' --no-graph -T 'local_bookmarks.join(",")' 2>/dev/null || true)"
 fi
 
 # ─── Construct and append JSON ───────────────────────────────

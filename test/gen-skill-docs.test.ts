@@ -275,7 +275,7 @@ describe('gen-skill-docs', () => {
   test('generated SKILL.md contains branch detection', () => {
     const content = fs.readFileSync(path.join(ROOT, 'SKILL.md'), 'utf-8');
     expect(content).toContain('_BRANCH');
-    expect(content).toContain('git branch --show-current');
+    expect(content).toContain("heads(::@ & bookmarks())");
   });
 
   test('tier 2+ skills contain ELI10 simplification rules (AskUserQuestion format)', () => {
@@ -323,10 +323,14 @@ describe('gen-skill-docs', () => {
     // Ratcheted 36500 → 39000 in the contributor wave when #1205 added the
     // \\u-escape CJK rule (rule 12 + self-check item) to the AskUserQuestion
     // preamble.
+    // Ratcheted 39000 → 41000 when the VCS guidance resolver expanded to
+    // cover bookmark management for the jj-only refactor (jj commit leaves
+    // @ empty, so the "set bookmark before push" rule is load-bearing for
+    // /ship correctness).
     for (const skill of reviewSkills) {
       const content = fs.readFileSync(skill.path, 'utf-8');
       const preamble = extractPreambleBeforeWorkflow(content, skill.markers);
-      expect(Buffer.byteLength(preamble, 'utf-8')).toBeLessThan(39_000);
+      expect(Buffer.byteLength(preamble, 'utf-8')).toBeLessThan(41_000);
     }
   });
 
@@ -500,8 +504,8 @@ describe('BASE_BRANCH_DETECT resolver', () => {
     expect(shipContent).toContain('glab');
   });
 
-  test('resolver output contains git-native fallback', () => {
-    expect(shipContent).toContain('git symbolic-ref');
+  test('resolver output contains jj-native trunk detection', () => {
+    expect(shipContent).toContain("jj log -r 'trunk()'");
   });
 
   test('resolver output mentions GitLab platform', () => {
@@ -656,9 +660,9 @@ describe('REVIEW_DASHBOARD resolver', () => {
     expect(content).toContain('skip_eng_review');
   });
 
-  test('dashboard bash block includes git HEAD for staleness detection', () => {
+  test('dashboard bash block includes commit short-id for staleness detection', () => {
     const content = fs.readFileSync(path.join(ROOT, 'plan-ceo-review', 'SKILL.md'), 'utf-8');
-    expect(content).toContain('git rev-parse --short HEAD');
+    expect(content).toContain("jj log -r @ --no-graph -T 'commit_id.short()'");
     expect(content).toContain('---HEAD---');
   });
 
@@ -879,7 +883,7 @@ describe('TEST_FAILURE_TRIAGE resolver', () => {
   test('T1 includes classification criteria (in-branch vs pre-existing)', () => {
     expect(shipSkill).toContain('In-branch');
     expect(shipSkill).toContain('Likely pre-existing');
-    expect(shipSkill).toContain('git diff origin/');
+    expect(shipSkill).toContain('jj diff --from <base>@origin --to @');
   });
 
   test('T3 branches on REPO_MODE (solo vs collaborative)', () => {
@@ -1388,7 +1392,7 @@ describe('CHANGELOG_WORKFLOW resolver', () => {
 
   test('ship SKILL.md contains changelog workflow', () => {
     expect(shipContent).toContain('CHANGELOG (auto-generate)');
-    expect(shipContent).toContain('git log <base>..HEAD --oneline');
+    expect(shipContent).toContain("jj log -r '<base>@origin..@' --no-graph");
   });
 
   test('changelog workflow includes cross-check step', () => {

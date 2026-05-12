@@ -264,8 +264,8 @@ ${invokeBlock}
 After /${first} completes, re-run the design doc check:
 \`\`\`bash
 setopt +o nomatch 2>/dev/null || true  # zsh compat
-SLUG=$(~/.claude/skills/gstack/browse/bin/remote-slug 2>/dev/null || basename "$(jj root 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null || pwd)")
-BRANCH=$(jj log -r @ --no-graph -T 'bookmarks.join(",")' 2>/dev/null | tr '/' '-' | sed 's/,$//' || echo 'no-branch')
+SLUG=$(~/.claude/skills/gstack/browse/bin/remote-slug 2>/dev/null || basename "$(jj root 2>/dev/null || pwd)")
+BRANCH=$(jj log -r 'heads(::@ & bookmarks())' --no-graph -T 'local_bookmarks.join(",")' 2>/dev/null | tr '/' '-' | sed 's/,$//' || echo 'no-branch')
 [ -z "$BRANCH" ] && BRANCH=$(jj log -r @ --no-graph -T 'change_id.short()' 2>/dev/null || echo 'no-branch')
 DESIGN=$(ls -t ~/.gstack/projects/$SLUG/*-$BRANCH-design-*.md 2>/dev/null | head -1)
 [ -z "$DESIGN" ] && DESIGN=$(ls -t ~/.gstack/projects/$SLUG/*-design-*.md 2>/dev/null | head -1)
@@ -324,7 +324,7 @@ Then add the context block and mode-appropriate instructions:
 
 \`\`\`bash
 TMPERR_OH=$(mktemp /tmp/codex-oh-err-XXXXXXXX)
-_REPO_ROOT=$(jj root 2>/dev/null || git rev-parse --show-toplevel) || { echo "ERROR: not in a jj or git repo" >&2; exit 1; }
+_REPO_ROOT=$(jj root) || { echo "ERROR: not in a jj repo" >&2; exit 1; }
 codex exec "$(cat "$CODEX_PROMPT_FILE")" -C "$_REPO_ROOT" -s read-only -c 'model_reasoning_effort="high"' --enable web_search_cached < /dev/null 2>"$TMPERR_OH"
 \`\`\`
 
@@ -476,7 +476,7 @@ If Codex is available AND \`OLD_CFG\` is NOT \`disabled\`:
 
 \`\`\`bash
 TMPERR_ADV=$(mktemp /tmp/codex-adv-XXXXXXXX)
-_REPO_ROOT=$(jj root 2>/dev/null || git rev-parse --show-toplevel) || { echo "ERROR: not in a jj or git repo" >&2; exit 1; }
+_REPO_ROOT=$(jj root) || { echo "ERROR: not in a jj repo" >&2; exit 1; }
 codex exec "${CODEX_BOUNDARY}Review the changes on this branch against the base branch. Run jj diff --from <base>@origin --to @ --git to see the diff. Your job is to find ways this code will fail in production. Think like an attacker and a chaos engineer. Find edge cases, race conditions, security holes, resource leaks, failure modes, and silent data corruption paths. Be adversarial. Be thorough. No compliments — just the problems. End your output with ONE line in the canonical format \`Recommendation: <action> because <one-line reason naming the most exploitable finding>\`. Generic reasons like 'because it's safer' do not qualify; the reason must point to a specific finding or no-fix rationale." -C "$_REPO_ROOT" -s read-only -c 'model_reasoning_effort="high"' --enable web_search_cached < /dev/null 2>"$TMPERR_ADV"
 \`\`\`
 
@@ -504,7 +504,7 @@ If \`DIFF_TOTAL >= 200\` AND Codex is available AND \`OLD_CFG\` is NOT \`disable
 
 \`\`\`bash
 TMPERR=$(mktemp /tmp/codex-review-XXXXXXXX)
-_REPO_ROOT=$(jj root 2>/dev/null || git rev-parse --show-toplevel) || { echo "ERROR: not in a jj or git repo" >&2; exit 1; }
+_REPO_ROOT=$(jj root) || { echo "ERROR: not in a jj repo" >&2; exit 1; }
 cd "$_REPO_ROOT"
 codex review "${CODEX_BOUNDARY}Review the diff against the base branch." --base <base> -c 'model_reasoning_effort="high"' --enable web_search_cached < /dev/null 2>"$TMPERR"
 \`\`\`
@@ -534,7 +534,7 @@ If \`DIFF_TOTAL < 200\`: skip this section silently. The Claude + Codex adversar
 
 After all passes complete, persist:
 \`\`\`bash
-~/.claude/skills/gstack/bin/gstack-review-log '{"skill":"adversarial-review","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","status":"STATUS","source":"SOURCE","tier":"always","gate":"GATE","commit":"'"$(jj log -r @ --no-graph -T 'commit_id.short()' 2>/dev/null || git rev-parse --short HEAD)"'"}'
+~/.claude/skills/gstack/bin/gstack-review-log '{"skill":"adversarial-review","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","status":"STATUS","source":"SOURCE","tier":"always","gate":"GATE","commit":"'"$(jj log -r @ --no-graph -T 'commit_id.short()' 2>/dev/null)"'"}'
 \`\`\`
 Substitute: STATUS = "clean" if no findings across ALL passes, "issues_found" if any pass found issues. SOURCE = "both" if Codex ran, "claude" if only Claude subagent ran. GATE = the Codex structured review gate result ("pass"/"fail"), "skipped" if diff < 200, or "informational" if Codex was unavailable. If all passes failed, do NOT persist.
 
@@ -617,7 +617,7 @@ THE PLAN:
 
 \`\`\`bash
 TMPERR_PV=$(mktemp /tmp/codex-planreview-XXXXXXXX)
-_REPO_ROOT=$(jj root 2>/dev/null || git rev-parse --show-toplevel) || { echo "ERROR: not in a jj or git repo" >&2; exit 1; }
+_REPO_ROOT=$(jj root) || { echo "ERROR: not in a jj repo" >&2; exit 1; }
 codex exec "<prompt>" -C "$_REPO_ROOT" -s read-only -c 'model_reasoning_effort="high"' --enable web_search_cached < /dev/null 2>"$TMPERR_PV"
 \`\`\`
 
@@ -690,7 +690,7 @@ If no tension points exist, note: "No cross-model tension — both reviewers agr
 
 **Persist the result:**
 \`\`\`bash
-~/.claude/skills/gstack/bin/gstack-review-log '{"skill":"codex-plan-review","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","status":"STATUS","source":"SOURCE","commit":"'"$(jj log -r @ --no-graph -T 'commit_id.short()' 2>/dev/null || git rev-parse --short HEAD)"'"}'
+~/.claude/skills/gstack/bin/gstack-review-log '{"skill":"codex-plan-review","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","status":"STATUS","source":"SOURCE","commit":"'"$(jj log -r @ --no-graph -T 'commit_id.short()' 2>/dev/null)"'"}'
 \`\`\`
 
 Substitute: STATUS = "clean" if no findings, "issues_found" if findings exist.
@@ -712,9 +712,9 @@ function generatePlanFileDiscovery(): string {
 
 \`\`\`bash
 setopt +o nomatch 2>/dev/null || true  # zsh compat
-BRANCH=$(jj log -r @ --no-graph -T 'bookmarks.join(",")' 2>/dev/null | tr '/' '-' | sed 's/,$//')
+BRANCH=$(jj log -r 'heads(::@ & bookmarks())' --no-graph -T 'local_bookmarks.join(",")' 2>/dev/null | tr '/' '-' | sed 's/,$//')
 [ -z "$BRANCH" ] && BRANCH=$(jj log -r @ --no-graph -T 'change_id.short()' 2>/dev/null || echo unknown)
-REPO=$(basename "$(jj root 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null)")
+REPO=$(basename "$(jj root 2>/dev/null)")
 # Compute project slug for ~/.gstack/projects/ lookup
 _PLAN_SLUG=$(jj git remote list 2>/dev/null | awk '$1=="origin"{print $2}' | sed 's|.*[:/]\\([^/]*/[^/]*\\)\\.git$|\\1|;s|.*[:/]\\([^/]*/[^/]*\\)$|\\1|' | tr '/' '-' | tr -cd 'a-zA-Z0-9._-') || true
 _PLAN_SLUG="\${_PLAN_SLUG:-$(basename "$PWD" | tr -cd 'a-zA-Z0-9._-')}"

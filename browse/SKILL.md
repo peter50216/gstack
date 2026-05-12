@@ -33,8 +33,8 @@ _SESSIONS=$(find ~/.gstack/sessions -mmin -120 -type f 2>/dev/null | wc -l | tr 
 find ~/.gstack/sessions -mmin +120 -type f -exec rm {} + 2>/dev/null || true
 _PROACTIVE=$(~/.claude/skills/gstack/bin/gstack-config get proactive 2>/dev/null || echo "true")
 _PROACTIVE_PROMPTED=$([ -f ~/.gstack/.proactive-prompted ] && echo "yes" || echo "no")
-_BRANCH=$(jj log -r @ --no-graph -T 'bookmarks.join(",")' 2>/dev/null)
-[ -z "$_BRANCH" ] && _BRANCH=$(jj log -r @ --no-graph -T 'change_id.short()' 2>/dev/null || git branch --show-current 2>/dev/null || echo "unknown")
+_BRANCH=$(jj log -r 'heads(::@ & bookmarks())' --no-graph -T 'local_bookmarks.join(",")' 2>/dev/null)
+[ -z "$_BRANCH" ] && _BRANCH=$(jj log -r @ --no-graph -T 'change_id.short()' 2>/dev/null || echo "unknown")
 echo "BRANCH: $_BRANCH"
 _SKILL_PREFIX=$(~/.claude/skills/gstack/bin/gstack-config get skill_prefix 2>/dev/null || echo "false")
 echo "PROACTIVE: $_PROACTIVE"
@@ -58,7 +58,7 @@ _QUESTION_TUNING=$(~/.claude/skills/gstack/bin/gstack-config get question_tuning
 echo "QUESTION_TUNING: $_QUESTION_TUNING"
 mkdir -p ~/.gstack/analytics
 if [ "$_TEL" != "off" ]; then
-echo '{"skill":"browse","ts":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","repo":"'$(basename "$(jj root 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null || echo "unknown")'"}'  >> ~/.gstack/analytics/skill-usage.jsonl 2>/dev/null || true
+echo '{"skill":"browse","ts":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","repo":"'$(basename "$(jj root 2>/dev/null)" 2>/dev/null || echo "unknown")'"}'  >> ~/.gstack/analytics/skill-usage.jsonl 2>/dev/null || true
 fi
 for _PF in $(find ~/.gstack/analytics -maxdepth 1 -name '.pending-*' 2>/dev/null); do
   if [ -f "$_PF" ]; then
@@ -297,7 +297,7 @@ if [ -f "$_GBRAIN_CONFIG" ] && command -v gbrain >/dev/null 2>&1; then
   _GBRAIN_VERSION_OK=$(gbrain --version 2>/dev/null | grep -c '^gbrain ' || echo 0)
   if [ "$_GBRAIN_VERSION_OK" -gt 0 ] 2>/dev/null; then
     _GBRAIN_PIN_PATH=""
-    _REPO_TOP=$(jj root 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null || echo "")
+    _REPO_TOP=$(jj root 2>/dev/null || echo "")
     if [ -n "$_REPO_TOP" ] && [ -f "$_REPO_TOP/.gbrain-source" ]; then
       _GBRAIN_PIN_PATH="$_REPO_TOP/.gbrain-source"
     fi
@@ -487,7 +487,7 @@ State persists between calls (cookies, tabs, login sessions).
 ## SETUP (run this check BEFORE any browse command)
 
 ```bash
-_ROOT=$(jj root 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null)
+_ROOT=$(jj root 2>/dev/null)
 B=""
 [ -n "$_ROOT" ] && [ -x "$_ROOT/.claude/skills/gstack/browse/dist/browse" ] && B="$_ROOT/.claude/skills/gstack/browse/dist/browse"
 [ -z "$B" ] && B="$HOME/.claude/skills/gstack/browse/dist/browse"

@@ -14,7 +14,7 @@ bun install                    # install dependencies
 bin/dev-setup                  # activate dev mode
 ```
 
-> **Full clone vs shallow.** The README's user-facing install uses `jj git clone --colocate`, which keeps history available. As a contributor, use a full clone — you'll need history for `jj log`, blame-style archaeology, bisection, and reviewing PRs against earlier versions. If you already have an older `--depth 1` clone, promote it to a full clone with `git fetch --unshallow`.
+> **Full clone needed for contributors.** `jj git clone --colocate` already produces a full clone with complete history — exactly what you need for `jj log`, blame-style archaeology, bisection, and reviewing PRs against earlier versions. No extra steps required.
 
 Now edit any `SKILL.md`, invoke it in Claude Code (e.g. `/review`), and see your changes live. When you're done developing:
 

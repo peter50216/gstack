@@ -39,8 +39,8 @@ let workdir: string;
 beforeEach(() => {
   stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'taste-state-'));
   workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'taste-work-'));
-  // Initialize a git repo so gstack-taste-update's getSlug() finds a toplevel
-  spawnSync('git', ['init', '-b', 'main'], { cwd: workdir, stdio: 'pipe' });
+  // Initialize a jj repo so gstack-taste-update's getSlug() finds a toplevel
+  spawnSync('jj', ['git', 'init', '--colocate'], { cwd: workdir, stdio: 'pipe' });
 });
 
 afterEach(() => {

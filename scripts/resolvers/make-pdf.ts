@@ -15,7 +15,7 @@ export function generateMakePdfSetup(ctx: TemplateContext): string {
   return `## MAKE-PDF SETUP (run this check BEFORE any make-pdf command)
 
 \`\`\`bash
-_ROOT=$(jj root 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null)
+_ROOT=$(jj root 2>/dev/null)
 P=""
 [ -n "$MAKE_PDF_BIN" ] && [ -x "$MAKE_PDF_BIN" ] && P="$MAKE_PDF_BIN"
 [ -z "$P" ] && [ -n "$_ROOT" ] && [ -x "$_ROOT/${ctx.paths.localSkillRoot}/make-pdf/dist/pdf" ] && P="$_ROOT/${ctx.paths.localSkillRoot}/make-pdf/dist/pdf"

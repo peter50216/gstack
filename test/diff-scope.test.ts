@@ -21,25 +21,33 @@ function createRepo(files: string[]): string {
   const run = (cmd: string, args: string[]) =>
     spawnSync(cmd, args, { cwd: dir, stdio: 'pipe', timeout: 5000 });
 
-  run('git', ['init', '-b', 'main']);
-  run('git', ['config', 'user.email', 'test@test.com']);
-  run('git', ['config', 'user.name', 'Test']);
+  // Colocated jj+git repo so gstack-diff-scope (jj-only) can resolve revisions
+  // and so the `main@origin` revset has something to point at (we fake "origin"
+  // by creating a bare git remote alongside).
+  const remoteDir = join(dir, '..', `${dir.split('/').pop()}-remote.git`);
+  run('git', ['init', '--bare', remoteDir]);
+  dirs.push(remoteDir);
 
-  // Base commit
+  run('jj', ['git', 'init', '--colocate']);
+  run('jj', ['config', 'set', '--repo', 'user.email', 'test@test.com']);
+  run('jj', ['config', 'set', '--repo', 'user.name', 'Test']);
+  run('jj', ['git', 'remote', 'add', 'origin', remoteDir]);
+
+  // Base commit on main, pushed to origin so `main@origin` resolves.
   writeFileSync(join(dir, 'README.md'), '# test\n');
-  run('git', ['add', '.']);
-  run('git', ['commit', '-m', 'initial']);
+  run('jj', ['commit', '-m', 'initial']);
+  run('jj', ['bookmark', 'create', 'main', '-r', '@-']);
+  run('jj', ['git', 'push', '--remote', 'origin', '--bookmark', 'main', '--allow-new']);
 
-  // Feature branch with specified files
-  run('git', ['checkout', '-b', 'feature/test']);
+  // Feature branch with specified files.
   for (const f of files) {
     const fullPath = join(dir, f);
     const dirPath = fullPath.substring(0, fullPath.lastIndexOf('/'));
     if (dirPath !== dir) mkdirSync(dirPath, { recursive: true });
     writeFileSync(fullPath, '# test content\n');
   }
-  run('git', ['add', '.']);
-  run('git', ['commit', '-m', 'add files']);
+  run('jj', ['commit', '-m', 'add files']);
+  run('jj', ['bookmark', 'create', 'feature/test', '-r', '@-']);
 
   return dir;
 }

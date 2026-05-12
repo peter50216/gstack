@@ -158,7 +158,7 @@ rm -rf "$INSTALL_DIR.bak" "$TMP_DIR"
 Use the install directory from Step 2. Check if there's also a local vendored copy, and whether team mode is active:
 
 ```bash
-_ROOT=$(jj root 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null)
+_ROOT=$(jj root 2>/dev/null)
 LOCAL_GSTACK=""
 if [ -n "$_ROOT" ] && [ -d "$_ROOT/.claude/skills/gstack" ]; then
   _RESOLVED_LOCAL=$(cd "$_ROOT/.claude/skills/gstack" && pwd -P)
@@ -179,7 +179,7 @@ cd "$_ROOT"
 if ! grep -qF '.claude/skills/gstack/' .gitignore 2>/dev/null; then
   echo '.claude/skills/gstack/' >> .gitignore
 fi
-jj file untrack .claude/skills/gstack/ 2>/dev/null || git rm -r --cached .claude/skills/gstack/ 2>/dev/null || true
+jj file untrack .claude/skills/gstack/ 2>/dev/null || true
 rm -rf "$LOCAL_GSTACK"
 ```
 Tell user: "Removed vendored copy at `$LOCAL_GSTACK` (team mode active — global install is the source of truth). Commit the `.gitignore` change when ready."

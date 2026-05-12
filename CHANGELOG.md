@@ -1,5 +1,67 @@
 # Changelog
 
+## [1.34.0.0] - 2026-05-13
+
+## **gstack is Jujutsu-only. Every VCS code path runs through `jj`, no git fallback anywhere in production code.**
+## **`/ship` finally works on a fresh jj feature branch, and `_BRANCH` resolves to the branch name instead of a 12-char change_id.**
+
+The previous WIP "prefer jj workflows" pass left git fallbacks scattered through bin scripts, resolvers, and templates, and shipped a `/ship` Step 17 that broke on any branch jj-native enough to have an empty working copy after `jj commit`. This release removes the fallbacks, rewrites the push path, fixes branch capture so it climbs the ancestor chain, and pins jj 0.37.0 in the CI image so the test suite can exercise the jj-only fixtures.
+
+Three load-bearing changes:
+
+1. `/ship` Step 17 now runs `jj bookmark set <name> -r @- --allow-backwards` before push, then compares the bookmark commit to `<branch-name>@origin`. The old check returned PUSH_NEEDED on every re-run because `@` (the empty working copy after `jj commit`) never matched the remote bookmark.
+2. Branch detection in the preamble, `gstack-slug`, eureka/timeline logs, and plan-review resolvers reads `heads(::@ & bookmarks())` so an unbookmarked working copy resolves to the nearest ancestor bookmark instead of a 12-char change_id like `txxyrnno`.
+3. Every `jj cmd 2>/dev/null || git cmd` fallback in bin scripts and template resolvers is gone. Production code is jj-only. Test fixtures use `jj git init --colocate`. CI installs jj 0.37.0 from the upstream musl static binary.
+
+### The numbers that matter
+
+Source: `bun test test/skill-validation.test.ts test/team-mode.test.ts test/diff-scope.test.ts test/taste-engine.test.ts`. The 336-test skill-validation suite gained a `VCS guidance (jj-only)` describe block that fails the build if a `jj … || git …` fallback creeps back into `scripts/` or `bin/`.
+
+| Signal | Before | After |
+|---|---|---|
+| `jj cmd \|\| git cmd` fallbacks in `scripts/` and `bin/` | 18 | 0 |
+| `/ship` re-run on a clean-pushed branch | always PUSH_NEEDED | ALREADY_PUSHED |
+| `_BRANCH` on an unbookmarked working copy | 12-char change_id (`txxyrnno`) | nearest ancestor bookmark (`main`, `feat/x`) |
+| Bin scripts touching repo state | 13 used git | 0 (excluding `gstack-session-update`, which manages gstack's own install checkout) |
+| Install requirements | Git + Bun (Node on Windows) | Jujutsu + Bun (Node on Windows) |
+
+The biggest practical win is `/ship` working at all on a fresh jj branch. The old template assumed a colocated git bookmark already existed and silently pushed stale state when it did not. The bookmark now gets created or moved every time before push.
+
+### What this means for you
+
+Install gstack with `jj git clone --colocate https://github.com/garrytan/gstack.git ~/.claude/skills/gstack && ./setup`. Install Jujutsu first if you do not have it: [jj-vcs.github.io/jj](https://jj-vcs.github.io/jj/latest/). gstack does not run without it. `/ship`, `/review`, `/qa`, and every other VCS-touching skill now read jj revsets and write through `jj commit` and `jj bookmark set`. The team-init flow, the telemetry slug, the repo-mode author histogram, and the diff-scope file classifier all run jj-native.
+
+### Itemized changes
+
+#### Changed
+
+- **Install now requires Jujutsu.** Install command is `jj git clone --colocate ...`. `git clone` instructions are removed from `README.md` and `CONTRIBUTING.md`. Old installs continue to work; new installs must have jj on PATH.
+- **`/ship` Step 17 rewritten for jj.** Bookmark is created or moved to `@-` via `jj bookmark set <name> -r @- --allow-backwards` before push. Idempotency check compares `<branch-name>` to `<branch-name>@origin`, not `@`.
+- **Branch detection climbs ancestors.** `_BRANCH` in the preamble bash, `bin/gstack-slug`, `bin/gstack-telemetry-log`, and the plan-ceo/eng-review resolvers all read `heads(::@ & bookmarks())` so unbookmarked working copies still resolve to the right branch name.
+- **`gstack-repo-mode` uses jj revsets.** Author histogram reads `committer_date(after:"90 days ago") & ::<default>@origin & ~merges()` instead of `git shortlog`.
+- **`generate-vcs-guidance.ts` is now "Jujutsu-only"** with explicit bookmark-management instructions. Tier ≥ 2 skills carry the section; tier 1 (browse, setup-browser-cookies, benchmark) does not.
+- **`bin/gstack-next-version`, `bin/gstack-team-init`, `bin/gstack-uninstall`, `bin/gstack-taste-update`, `bin/gstack-review-read`, `bin/gstack-diff-scope`** all stripped of git fallbacks.
+- **`scripts/resolvers/{browse,design,review,utility,make-pdf,preamble/generate-brain-sync-block}.ts`** all stripped of `jj root || git rev-parse` and similar fallbacks.
+- **`{careful,freeze,guard,unfreeze,design-html,gstack-upgrade,open-gstack-browser,plan-ceo-review,plan-eng-review,plan-devex-review}/SKILL.md.tmpl`** stripped of inline git fallbacks.
+
+#### Added
+
+- **CI image installs jj 0.37.0** from the upstream musl static binary in `.github/docker/Dockerfile.ci` so jj-native test fixtures run on Ubicloud.
+- **Tier-gated test for VCS guidance.** `test/skill-validation.test.ts` asserts the section appears in tier ≥ 2 skills, is absent from tier 1 skills, and that no `jj … || git …` fallback strings remain in production code paths.
+
+#### Fixed
+
+- **Idempotent `/ship` re-runs.** Re-running `/ship` on a fresh-pushed branch now correctly detects ALREADY_PUSHED. The old check compared `@` (empty after `jj commit`) to the remote bookmark and always returned PUSH_NEEDED.
+- **Stale `--depth 1` clone advice in CONTRIBUTING.md** removed; full clone is the default under `jj git clone --colocate`.
+- **Dead `2>&1` redirect in `bin/gstack-team-init`** subsumed by the jj-only refactor (the entire fallback line went away).
+
+#### For contributors
+
+- Test fixtures previously using `git init` now use `jj git init --colocate`: `test/team-mode.test.ts`, `test/diff-scope.test.ts`, `test/taste-engine.test.ts`, `test/skill-e2e-ship-idempotency.test.ts`.
+- Six gen-skill-docs assertions updated for jj output. Plan-review preamble byte budget ratcheted 39000 → 41000 (VCS guidance expanded to cover bookmark management).
+- Golden SKILL.md fixtures regenerated for claude / codex / factory hosts.
+- Tickets for this work tracked in `.tickets/`: gst-ds56 (idempotency), gst-y8oy (bookmark management), gst-3aob (branch capture), gst-dj9w (jj-only sweep), gst-uxgl (CONTRIBUTING orphan), gst-r9t1 (resolver test), gst-pwuy (dead redirect).
+
 ## [1.33.2.0] - 2026-05-11
 
 ## **`./setup` no longer pollutes the global install when run from a Conductor worktree.**

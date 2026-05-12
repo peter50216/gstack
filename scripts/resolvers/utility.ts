@@ -11,11 +11,10 @@ export function generateSlugSetup(ctx: TemplateContext): string {
 export function generateBaseBranchDetect(_ctx: TemplateContext): string {
   return `## Step 0: Detect platform and base branch
 
-First, detect the Git hosting platform from the remote URL. In jj repos, prefer
-\`jj git remote list\`; fall back to raw git only if needed:
+First, detect the Git hosting platform from the remote URL:
 
 \`\`\`bash
-jj git remote list 2>/dev/null || git remote get-url origin 2>/dev/null
+jj git remote list 2>/dev/null | awk '$1=="origin"{print $2}'
 \`\`\`
 
 - If the URL contains "github.com" → platform is **GitHub**
@@ -23,7 +22,7 @@ jj git remote list 2>/dev/null || git remote get-url origin 2>/dev/null
 - Otherwise, check CLI availability:
   - \`gh auth status 2>/dev/null\` succeeds → platform is **GitHub** (covers GitHub Enterprise)
   - \`glab auth status 2>/dev/null\` succeeds → platform is **GitLab** (covers self-hosted)
-  - Neither → **unknown** (use jj-native commands when available; raw git fallback only if needed)
+  - Neither → **unknown** (jj-native revset fallbacks below)
 
 Determine which branch this PR/MR targets, or the repo's default branch if no
 PR/MR exists. Use the result as "the base branch" in all subsequent steps.
@@ -37,10 +36,9 @@ PR/MR exists. Use the result as "the base branch" in all subsequent steps.
 2. \`glab repo view -F json 2>/dev/null\` and extract the \`default_branch\` field — if succeeds, use it
 
 **jj-native fallback (if unknown platform, or CLI commands fail):**
-1. \`jj log -r 'trunk()' --no-graph -T 'bookmarks.join(",")' 2>/dev/null | cut -d, -f1\`
+1. \`jj log -r 'trunk()' --no-graph -T 'local_bookmarks.join(",")' 2>/dev/null | cut -d, -f1\`
 2. If that fails: \`jj log -r 'main@origin' --no-graph -T '"main"' 2>/dev/null\` → use \`main\`
 3. If that fails: \`jj log -r 'master@origin' --no-graph -T '"master"' 2>/dev/null\` → use \`master\`
-4. Raw git fallback if the repo is not using jj: \`git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||'\`
 
 If all fail, fall back to \`main\`.
 

@@ -76,14 +76,14 @@ function buildShippedFixture(): ShipFixture {
     }
   };
 
-  // Bare remote.
+  // Bare git remote (jj pushes through git remotes).
   sh(`git init --bare "${bareRemote}"`, root);
 
-  // Initial commit on main.
-  sh('git init -b main', workTree);
-  sh('git config user.email "test@test.com"', workTree);
-  sh('git config user.name "Test"', workTree);
-  sh('git config commit.gpgsign false', workTree);
+  // Worktree as a colocated jj+git repo on main.
+  sh('jj git init --colocate', workTree);
+  sh('jj config set --repo user.email test@test.com', workTree);
+  sh('jj config set --repo user.name Test', workTree);
+  sh(`jj git remote add origin "${bareRemote}"`, workTree);
 
   fs.writeFileSync(path.join(workTree, 'VERSION'), '0.0.1\n');
   fs.writeFileSync(
@@ -96,13 +96,13 @@ function buildShippedFixture(): ShipFixture {
   );
   fs.writeFileSync(path.join(workTree, 'README.md'), '# Fixture\n');
 
-  sh('git add VERSION package.json CHANGELOG.md README.md', workTree);
-  sh('git commit -m "chore: initial release v0.0.1"', workTree);
-  sh(`git remote add origin "${bareRemote}"`, workTree);
-  sh('git push -u origin main', workTree);
+  sh('jj commit VERSION package.json CHANGELOG.md README.md -m "chore: initial release v0.0.1"', workTree);
+  sh('jj bookmark create main -r @-', workTree);
+  sh('jj git push --remote origin --bookmark main --allow-new', workTree);
 
-  // Feature branch with ALREADY_BUMPED state.
-  sh('git checkout -b feat/already-shipped', workTree);
+  // Feature branch with ALREADY_BUMPED state. Bookmark sits on the feature
+  // commit (@- after jj commit), so /ship's idempotency check should see
+  // LOCAL == REMOTE after the push below.
   fs.writeFileSync(path.join(workTree, 'VERSION'), '0.0.2\n');
   fs.writeFileSync(
     path.join(workTree, 'package.json'),
@@ -114,9 +114,9 @@ function buildShippedFixture(): ShipFixture {
   );
   fs.writeFileSync(path.join(workTree, 'feature.md'), '# Feature\n\nAlready shipped.\n');
 
-  sh('git add VERSION package.json CHANGELOG.md feature.md', workTree);
-  sh('git commit -m "feat: add new feature\n\nbumps VERSION to 0.0.2"', workTree);
-  sh('git push -u origin feat/already-shipped', workTree);
+  sh('jj commit VERSION package.json CHANGELOG.md feature.md -m "feat: add new feature\\n\\nbumps VERSION to 0.0.2"', workTree);
+  sh('jj bookmark create feat/already-shipped -r @-', workTree);
+  sh('jj git push --remote origin --bookmark feat/already-shipped --allow-new', workTree);
 
   return { workTree, bareRemote, setupLog };
 }
@@ -136,11 +136,11 @@ function snapshotFixture(workTree: string): FixtureSnapshot {
   const changelog = fs.readFileSync(path.join(workTree, 'CHANGELOG.md'), 'utf-8');
   // Count `## [0.0.2]` headings — should stay at 1 across re-runs.
   const changelogEntryCount = (changelog.match(/^##\s*\[0\.0\.2\]/gm) ?? []).length;
-  const head = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: workTree, stdio: 'pipe' });
+  const head = spawnSync('jj', ['log', '-r', '@-', '--no-graph', '-T', 'commit_id'], { cwd: workTree, stdio: 'pipe' });
   const branchHead = head.stdout?.toString().trim() ?? '';
   // Count "chore: bump version" commits on this branch since main.
   const log = spawnSync(
-    'git', ['log', '--format=%s', 'main..HEAD'],
+    'jj', ['log', '-r', 'main@origin..@-', '--no-graph', '-T', 'description.first_line() ++ "\\n"'],
     { cwd: workTree, stdio: 'pipe' },
   );
   const subjects = log.stdout?.toString() ?? '';

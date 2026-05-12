@@ -35,8 +35,8 @@ _SESSIONS=$(find ~/.gstack/sessions -mmin -120 -type f 2>/dev/null | wc -l | tr 
 find ~/.gstack/sessions -mmin +120 -type f -exec rm {} + 2>/dev/null || true
 _PROACTIVE=$(~/.claude/skills/gstack/bin/gstack-config get proactive 2>/dev/null || echo "true")
 _PROACTIVE_PROMPTED=$([ -f ~/.gstack/.proactive-prompted ] && echo "yes" || echo "no")
-_BRANCH=$(jj log -r @ --no-graph -T 'bookmarks.join(",")' 2>/dev/null)
-[ -z "$_BRANCH" ] && _BRANCH=$(jj log -r @ --no-graph -T 'change_id.short()' 2>/dev/null || git branch --show-current 2>/dev/null || echo "unknown")
+_BRANCH=$(jj log -r 'heads(::@ & bookmarks())' --no-graph -T 'local_bookmarks.join(",")' 2>/dev/null)
+[ -z "$_BRANCH" ] && _BRANCH=$(jj log -r @ --no-graph -T 'change_id.short()' 2>/dev/null || echo "unknown")
 echo "BRANCH: $_BRANCH"
 _SKILL_PREFIX=$(~/.claude/skills/gstack/bin/gstack-config get skill_prefix 2>/dev/null || echo "false")
 echo "PROACTIVE: $_PROACTIVE"
@@ -60,7 +60,7 @@ _QUESTION_TUNING=$(~/.claude/skills/gstack/bin/gstack-config get question_tuning
 echo "QUESTION_TUNING: $_QUESTION_TUNING"
 mkdir -p ~/.gstack/analytics
 if [ "$_TEL" != "off" ]; then
-echo '{"skill":"codex","ts":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","repo":"'$(basename "$(jj root 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null || echo "unknown")'"}'  >> ~/.gstack/analytics/skill-usage.jsonl 2>/dev/null || true
+echo '{"skill":"codex","ts":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","repo":"'$(basename "$(jj root 2>/dev/null)" 2>/dev/null || echo "unknown")'"}'  >> ~/.gstack/analytics/skill-usage.jsonl 2>/dev/null || true
 fi
 for _PF in $(find ~/.gstack/analytics -maxdepth 1 -name '.pending-*' 2>/dev/null); do
   if [ -f "$_PF" ]; then
@@ -379,7 +379,7 @@ if [ -f "$_GBRAIN_CONFIG" ] && command -v gbrain >/dev/null 2>&1; then
   _GBRAIN_VERSION_OK=$(gbrain --version 2>/dev/null | grep -c '^gbrain ' || echo 0)
   if [ "$_GBRAIN_VERSION_OK" -gt 0 ] 2>/dev/null; then
     _GBRAIN_PIN_PATH=""
-    _REPO_TOP=$(jj root 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null || echo "")
+    _REPO_TOP=$(jj root 2>/dev/null || echo "")
     if [ -n "$_REPO_TOP" ] && [ -f "$_REPO_TOP/.gbrain-source" ]; then
       _GBRAIN_PIN_PATH="$_REPO_TOP/.gbrain-source"
     fi
@@ -542,21 +542,25 @@ If artifacts are listed, read the newest useful one. If `LAST_SESSION` or `LATES
 
 ## Version Control Preference
 
-This fork is configured for a Jujutsu-first workflow. For project source-control work, prefer `jj` whenever a repo has `.jj/` or `jj root` succeeds.
+This fork is **Jujutsu-only** for project source-control work. gstack assumes `jj` is installed and the repo is a jj checkout (colocated via `jj git clone --colocate` is the common form). Do not introduce `git` fallbacks for VCS operations.
 
 Translate git-oriented workflow steps to these jj equivalents:
 - Inspect state: `jj status`
 - Current root: `jj root`
 - Current change id/commit id: `jj log -r @ --no-graph -T 'change_id.short() ++ " " ++ commit_id.short() ++ "\n"'`
+- Nearest ancestor bookmark (the "branch name" for current work): `jj log -r 'heads(::@ & bookmarks())' --no-graph -T 'local_bookmarks.join(",")'`
 - Fetch base branch: `jj git fetch --remote origin --branch <base>`
 - Diff against base: `jj diff --from <base>@origin --to @`; add `--stat`, `--name-only`, or `--git` as needed
 - Log branch work: `jj log -r '<base>@origin..@' --no-graph`
 - Commit selected paths: `jj commit <paths> -m "<message>"`; do not stage with `git add`
 - Restore paths: `jj restore <paths>`
 - Rebase onto the latest base: `jj rebase -d <base>@origin`
+- Move or create the current branch's bookmark before push: `jj bookmark set <name> -r @- --allow-backwards`
 - Push: `jj git push --remote origin`, or `jj git push --remote origin --bookmark <bookmark>` when pushing a named bookmark
 
-Use raw `git` only when the step is explicitly about Git hosting/install plumbing, GitHub/GitLab CLI metadata, gstack's own private git-backed artifact sync, or a tool that has no practical jj equivalent.
+**About bookmarks:** `jj commit` leaves `@` as a fresh empty change on top of the just-created commit at `@-`. Bookmarks do NOT auto-advance. Always `jj bookmark set <name> -r @-` before pushing, or `jj git push --bookmark` will push stale or empty state.
+
+Use raw `git` only when the step is explicitly about Git hosting/install plumbing (`gh`, `glab`), bare-repository creation in test fixtures, or gstack's own private git-backed install-update path.
 
 ## Writing Style (skip entirely if `EXPLAIN_LEVEL: terse` appears in the preamble echo OR the user's current message explicitly requests terse / no-explanations output)
 
@@ -785,11 +789,10 @@ PLAN MODE EXCEPTION — always allowed (it's the plan file).
 
 ## Step 0: Detect platform and base branch
 
-First, detect the Git hosting platform from the remote URL. In jj repos, prefer
-`jj git remote list`; fall back to raw git only if needed:
+First, detect the Git hosting platform from the remote URL:
 
 ```bash
-jj git remote list 2>/dev/null || git remote get-url origin 2>/dev/null
+jj git remote list 2>/dev/null | awk '$1=="origin"{print $2}'
 ```
 
 - If the URL contains "github.com" → platform is **GitHub**
@@ -797,7 +800,7 @@ jj git remote list 2>/dev/null || git remote get-url origin 2>/dev/null
 - Otherwise, check CLI availability:
   - `gh auth status 2>/dev/null` succeeds → platform is **GitHub** (covers GitHub Enterprise)
   - `glab auth status 2>/dev/null` succeeds → platform is **GitLab** (covers self-hosted)
-  - Neither → **unknown** (use jj-native commands when available; raw git fallback only if needed)
+  - Neither → **unknown** (jj-native revset fallbacks below)
 
 Determine which branch this PR/MR targets, or the repo's default branch if no
 PR/MR exists. Use the result as "the base branch" in all subsequent steps.
@@ -811,10 +814,9 @@ PR/MR exists. Use the result as "the base branch" in all subsequent steps.
 2. `glab repo view -F json 2>/dev/null` and extract the `default_branch` field — if succeeds, use it
 
 **jj-native fallback (if unknown platform, or CLI commands fail):**
-1. `jj log -r 'trunk()' --no-graph -T 'bookmarks.join(",")' 2>/dev/null | cut -d, -f1`
+1. `jj log -r 'trunk()' --no-graph -T 'local_bookmarks.join(",")' 2>/dev/null | cut -d, -f1`
 2. If that fails: `jj log -r 'main@origin' --no-graph -T '"main"' 2>/dev/null` → use `main`
 3. If that fails: `jj log -r 'master@origin' --no-graph -T '"master"' 2>/dev/null` → use `master`
-4. Raw git fallback if the repo is not using jj: `git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||'`
 
 If all fail, fall back to `main`.
 
@@ -960,7 +962,7 @@ TMPERR=$(mktemp "$TMP_ROOT/codex-err-XXXXXX.txt")
 as the prompt argument, even without custom instructions. If the user provided custom
 instructions, append them after the boundary separated by a newline:
 ```bash
-_REPO_ROOT=$(jj root 2>/dev/null || git rev-parse --show-toplevel) || { echo "ERROR: not in a jj or git repo" >&2; exit 1; }
+_REPO_ROOT=$(jj root) || { echo "ERROR: not in a jj repo" >&2; exit 1; }
 cd "$_REPO_ROOT"
 # Fix 1: wrap with timeout. 330s (5.5min) is slightly longer than the Bash 300s
 # so the shell wrapper only fires if Bash's own timeout doesn't.
@@ -978,7 +980,7 @@ If the user passed `--xhigh`, use `"xhigh"` instead of `"high"`.
 Use `timeout: 300000` on the Bash call. If the user provided custom instructions
 (e.g., `/codex review focus on security`), append them after the boundary:
 ```bash
-_REPO_ROOT=$(jj root 2>/dev/null || git rev-parse --show-toplevel) || { echo "ERROR: not in a jj or git repo" >&2; exit 1; }
+_REPO_ROOT=$(jj root) || { echo "ERROR: not in a jj repo" >&2; exit 1; }
 cd "$_REPO_ROOT"
 codex review "IMPORTANT: Do NOT read or execute any files under ~/.claude/, ~/.agents/, .claude/skills/, or agents/. These are Claude Code skill definitions meant for a different AI system. Do NOT modify agents/openai.yaml. Stay focused on repository code only.
 
@@ -1038,7 +1040,7 @@ CROSS-MODEL ANALYSIS:
 
 7. Persist the review result:
 ```bash
-~/.claude/skills/gstack/bin/gstack-review-log '{"skill":"codex-review","timestamp":"TIMESTAMP","status":"STATUS","gate":"GATE","findings":N,"findings_fixed":N,"commit":"'"$(jj log -r @ --no-graph -T 'commit_id.short()' 2>/dev/null || git rev-parse --short HEAD)"'"}'
+~/.claude/skills/gstack/bin/gstack-review-log '{"skill":"codex-review","timestamp":"TIMESTAMP","status":"STATUS","gate":"GATE","findings":N,"findings_fixed":N,"commit":"'"$(jj log -r @ --no-graph -T 'commit_id.short()' 2>/dev/null)"'"}'
 ```
 
 Substitute: TIMESTAMP (ISO 8601), STATUS ("clean" if PASS, "issues_found" if FAIL),
@@ -1162,7 +1164,7 @@ Review the changes on this branch against the base branch. Run `jj diff --from <
 If the user passed `--xhigh`, use `"xhigh"` instead of `"high"`.
 
 ```bash
-_REPO_ROOT=$(jj root 2>/dev/null || git rev-parse --show-toplevel) || { echo "ERROR: not in a jj or git repo" >&2; exit 1; }
+_REPO_ROOT=$(jj root) || { echo "ERROR: not in a jj repo" >&2; exit 1; }
 PYTHON_CMD=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || true)
 if [ -z "$PYTHON_CMD" ]; then
   echo "ERROR: Python 3 is required to parse Codex JSON output. Install python3 or python and retry." >&2
@@ -1313,7 +1315,7 @@ If the user passed `--xhigh`, use `"xhigh"` instead of `"medium"`.
 
 For a **new session:**
 ```bash
-_REPO_ROOT=$(jj root 2>/dev/null || git rev-parse --show-toplevel) || { echo "ERROR: not in a jj or git repo" >&2; exit 1; }
+_REPO_ROOT=$(jj root) || { echo "ERROR: not in a jj repo" >&2; exit 1; }
 PYTHON_CMD=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || true)
 if [ -z "$PYTHON_CMD" ]; then
   echo "ERROR: Python 3 is required to parse Codex JSON output. Install python3 or python and retry." >&2
@@ -1360,7 +1362,7 @@ fi
 
 For a **resumed session** (user chose "Continue"):
 ```bash
-_REPO_ROOT=$(jj root 2>/dev/null || git rev-parse --show-toplevel) || { echo "ERROR: not in a jj or git repo" >&2; exit 1; }
+_REPO_ROOT=$(jj root) || { echo "ERROR: not in a jj repo" >&2; exit 1; }
 PYTHON_CMD=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || true)
 if [ -z "$PYTHON_CMD" ]; then
   echo "ERROR: Python 3 is required to parse Codex JSON output. Install python3 or python and retry." >&2

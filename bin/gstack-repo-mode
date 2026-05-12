@@ -14,7 +14,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Compute SLUG directly (avoid eval of gstack-slug — branch names can contain shell metacharacters)
 REMOTE_URL=$(jj git remote list 2>/dev/null | awk '$1=="origin"{print $2}' | head -1 || true)
-[ -z "$REMOTE_URL" ] && REMOTE_URL=$(git remote get-url origin 2>/dev/null || true)
 if [ -z "$REMOTE_URL" ]; then
   echo "REPO_MODE=unknown"
   exit 0
@@ -45,20 +44,13 @@ if [ -f "$CACHE_FILE" ]; then
   fi
 fi
 
-# Compute from git history (90-day window)
-# Use default branch (not HEAD) to avoid feature-branch sampling bias
-DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/||' || true)
-# Fallback: try origin/main, then origin/master, then HEAD
-if [ -z "$DEFAULT_BRANCH" ]; then
-  if git rev-parse --verify origin/main &>/dev/null; then
-    DEFAULT_BRANCH="origin/main"
-  elif git rev-parse --verify origin/master &>/dev/null; then
-    DEFAULT_BRANCH="origin/master"
-  else
-    DEFAULT_BRANCH="HEAD"
-  fi
-fi
-SHORTLOG=$(git shortlog -sn --since="90 days ago" --no-merges "$DEFAULT_BRANCH" 2>/dev/null)
+# Compute from jj history (90-day window).
+# Use trunk's first bookmark as the default branch (not @), avoiding feature-branch sampling bias.
+DEFAULT_BRANCH=$(jj log -r 'trunk()' --no-graph -T 'local_bookmarks.join(",")' 2>/dev/null | cut -d, -f1)
+[ -z "$DEFAULT_BRANCH" ] && DEFAULT_BRANCH=main
+
+# Author histogram: 90-day window, default-branch ancestry, no merges.
+SHORTLOG=$(jj log -r "committer_date(after:\"90 days ago\") & ::${DEFAULT_BRANCH}@origin & ~merges()" --no-graph -T 'author.email() ++ "\n"' 2>/dev/null | sort | uniq -c | sort -rn)
 if [ -z "$SHORTLOG" ]; then
   echo "REPO_MODE=unknown"
   exit 0

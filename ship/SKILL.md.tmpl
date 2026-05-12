@@ -333,7 +333,7 @@ Review the diff for structural issues that tests don't catch.
 
 9. Persist the review result to the review log:
 ```bash
-~/.claude/skills/gstack/bin/gstack-review-log '{"skill":"review","timestamp":"TIMESTAMP","status":"STATUS","issues_found":N,"critical":N,"informational":N,"quality_score":SCORE,"specialists":SPECIALISTS_JSON,"findings":FINDINGS_JSON,"commit":"'"$(jj log -r @ --no-graph -T 'commit_id.short()' 2>/dev/null || git rev-parse --short HEAD)"'","via":"ship"}'
+~/.claude/skills/gstack/bin/gstack-review-log '{"skill":"review","timestamp":"TIMESTAMP","status":"STATUS","issues_found":N,"critical":N,"informational":N,"quality_score":SCORE,"specialists":SPECIALISTS_JSON,"findings":FINDINGS_JSON,"commit":"'"$(jj log -r @ --no-graph -T 'commit_id.short()' 2>/dev/null)"'","via":"ship"}'
 ```
 Substitute TIMESTAMP (ISO 8601), STATUS ("clean" if no issues, "issues_found" otherwise),
 and N values from the summary counts above. The `via:"ship"` distinguishes from standalone `/review` runs.
@@ -736,17 +736,29 @@ Claiming work is complete without verification is dishonesty, not efficiency.
 
 ## Step 17: Push
 
-**Idempotency check:** Check if the branch is already pushed and up to date.
+**Move the bookmark to the latest committed change.** After `jj commit` in Step
+15.1, the working copy `@` is a fresh empty change on top of the just-created
+commit. Bookmarks don't auto-advance in jj — they must be explicitly created or
+moved to `@-` before push, or `jj git push` will push stale or empty state.
+
+```bash
+# Create or move bookmark to @- (the latest committed change).
+# --allow-backwards covers the case where a prior aborted /ship left the
+# bookmark ahead of @-.
+jj bookmark set <branch-name> -r @- --allow-backwards
+```
+
+**Idempotency check:** Compare the bookmark to its remote-tracked counterpart.
 
 ```bash
 jj git fetch --remote origin --branch <branch-name> 2>/dev/null
-LOCAL=$(jj log -r @ --no-graph -T 'commit_id.short()')
+LOCAL=$(jj log -r '<branch-name>' --no-graph -T 'commit_id.short()' 2>/dev/null || echo "none")
 REMOTE=$(jj log -r '<branch-name>@origin' --no-graph -T 'commit_id.short()' 2>/dev/null || echo "none")
 echo "LOCAL: $LOCAL  REMOTE: $REMOTE"
-[ "$LOCAL" = "$REMOTE" ] && echo "ALREADY_PUSHED" || echo "PUSH_NEEDED"
+[ "$LOCAL" = "$REMOTE" ] && [ "$LOCAL" != "none" ] && echo "ALREADY_PUSHED" || echo "PUSH_NEEDED"
 ```
 
-If `ALREADY_PUSHED`, skip the push but continue to Step 18. Otherwise push with upstream tracking:
+If `ALREADY_PUSHED`, skip the push but continue to Step 18. Otherwise push:
 
 ```bash
 jj git push --remote origin --bookmark <branch-name>

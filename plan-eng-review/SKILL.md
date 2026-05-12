@@ -39,8 +39,8 @@ _SESSIONS=$(find ~/.gstack/sessions -mmin -120 -type f 2>/dev/null | wc -l | tr 
 find ~/.gstack/sessions -mmin +120 -type f -exec rm {} + 2>/dev/null || true
 _PROACTIVE=$(~/.claude/skills/gstack/bin/gstack-config get proactive 2>/dev/null || echo "true")
 _PROACTIVE_PROMPTED=$([ -f ~/.gstack/.proactive-prompted ] && echo "yes" || echo "no")
-_BRANCH=$(jj log -r @ --no-graph -T 'bookmarks.join(",")' 2>/dev/null)
-[ -z "$_BRANCH" ] && _BRANCH=$(jj log -r @ --no-graph -T 'change_id.short()' 2>/dev/null || git branch --show-current 2>/dev/null || echo "unknown")
+_BRANCH=$(jj log -r 'heads(::@ & bookmarks())' --no-graph -T 'local_bookmarks.join(",")' 2>/dev/null)
+[ -z "$_BRANCH" ] && _BRANCH=$(jj log -r @ --no-graph -T 'change_id.short()' 2>/dev/null || echo "unknown")
 echo "BRANCH: $_BRANCH"
 _SKILL_PREFIX=$(~/.claude/skills/gstack/bin/gstack-config get skill_prefix 2>/dev/null || echo "false")
 echo "PROACTIVE: $_PROACTIVE"
@@ -64,7 +64,7 @@ _QUESTION_TUNING=$(~/.claude/skills/gstack/bin/gstack-config get question_tuning
 echo "QUESTION_TUNING: $_QUESTION_TUNING"
 mkdir -p ~/.gstack/analytics
 if [ "$_TEL" != "off" ]; then
-echo '{"skill":"plan-eng-review","ts":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","repo":"'$(basename "$(jj root 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null || echo "unknown")'"}'  >> ~/.gstack/analytics/skill-usage.jsonl 2>/dev/null || true
+echo '{"skill":"plan-eng-review","ts":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","repo":"'$(basename "$(jj root 2>/dev/null)" 2>/dev/null || echo "unknown")'"}'  >> ~/.gstack/analytics/skill-usage.jsonl 2>/dev/null || true
 fi
 for _PF in $(find ~/.gstack/analytics -maxdepth 1 -name '.pending-*' 2>/dev/null); do
   if [ -f "$_PF" ]; then
@@ -383,7 +383,7 @@ if [ -f "$_GBRAIN_CONFIG" ] && command -v gbrain >/dev/null 2>&1; then
   _GBRAIN_VERSION_OK=$(gbrain --version 2>/dev/null | grep -c '^gbrain ' || echo 0)
   if [ "$_GBRAIN_VERSION_OK" -gt 0 ] 2>/dev/null; then
     _GBRAIN_PIN_PATH=""
-    _REPO_TOP=$(jj root 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null || echo "")
+    _REPO_TOP=$(jj root 2>/dev/null || echo "")
     if [ -n "$_REPO_TOP" ] && [ -f "$_REPO_TOP/.gbrain-source" ]; then
       _GBRAIN_PIN_PATH="$_REPO_TOP/.gbrain-source"
     fi
@@ -546,21 +546,25 @@ If artifacts are listed, read the newest useful one. If `LAST_SESSION` or `LATES
 
 ## Version Control Preference
 
-This fork is configured for a Jujutsu-first workflow. For project source-control work, prefer `jj` whenever a repo has `.jj/` or `jj root` succeeds.
+This fork is **Jujutsu-only** for project source-control work. gstack assumes `jj` is installed and the repo is a jj checkout (colocated via `jj git clone --colocate` is the common form). Do not introduce `git` fallbacks for VCS operations.
 
 Translate git-oriented workflow steps to these jj equivalents:
 - Inspect state: `jj status`
 - Current root: `jj root`
 - Current change id/commit id: `jj log -r @ --no-graph -T 'change_id.short() ++ " " ++ commit_id.short() ++ "\n"'`
+- Nearest ancestor bookmark (the "branch name" for current work): `jj log -r 'heads(::@ & bookmarks())' --no-graph -T 'local_bookmarks.join(",")'`
 - Fetch base branch: `jj git fetch --remote origin --branch <base>`
 - Diff against base: `jj diff --from <base>@origin --to @`; add `--stat`, `--name-only`, or `--git` as needed
 - Log branch work: `jj log -r '<base>@origin..@' --no-graph`
 - Commit selected paths: `jj commit <paths> -m "<message>"`; do not stage with `git add`
 - Restore paths: `jj restore <paths>`
 - Rebase onto the latest base: `jj rebase -d <base>@origin`
+- Move or create the current branch's bookmark before push: `jj bookmark set <name> -r @- --allow-backwards`
 - Push: `jj git push --remote origin`, or `jj git push --remote origin --bookmark <bookmark>` when pushing a named bookmark
 
-Use raw `git` only when the step is explicitly about Git hosting/install plumbing, GitHub/GitLab CLI metadata, gstack's own private git-backed artifact sync, or a tool that has no practical jj equivalent.
+**About bookmarks:** `jj commit` leaves `@` as a fresh empty change on top of the just-created commit at `@-`. Bookmarks do NOT auto-advance. Always `jj bookmark set <name> -r @-` before pushing, or `jj git push --bookmark` will push stale or empty state.
+
+Use raw `git` only when the step is explicitly about Git hosting/install plumbing (`gh`, `glab`), bare-repository creation in test fixtures, or gstack's own private git-backed install-update path.
 
 ## Writing Style (skip entirely if `EXPLAIN_LEVEL: terse` appears in the preamble echo OR the user's current message explicitly requests terse / no-explanations output)
 
@@ -836,8 +840,8 @@ When evaluating architecture, think "boring by default." When reviewing tests, t
 ### Design Doc Check
 ```bash
 setopt +o nomatch 2>/dev/null || true  # zsh compat
-SLUG=$(~/.claude/skills/gstack/browse/bin/remote-slug 2>/dev/null || basename "$(jj root 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null || pwd)")
-BRANCH=$(jj log -r @ --no-graph -T 'bookmarks.join(",")' 2>/dev/null | tr '/' '-' | sed 's/,$//' || echo 'no-branch')
+SLUG=$(~/.claude/skills/gstack/browse/bin/remote-slug 2>/dev/null || basename "$(jj root 2>/dev/null || pwd)")
+BRANCH=$(jj log -r 'heads(::@ & bookmarks())' --no-graph -T 'local_bookmarks.join(",")' 2>/dev/null | tr '/' '-' | sed 's/,$//' || echo 'no-branch')
 [ -z "$BRANCH" ] && BRANCH=$(jj log -r @ --no-graph -T 'change_id.short()' 2>/dev/null || echo 'no-branch')
 DESIGN=$(ls -t ~/.gstack/projects/$SLUG/*-$BRANCH-design-*.md 2>/dev/null | head -1)
 [ -z "$DESIGN" ] && DESIGN=$(ls -t ~/.gstack/projects/$SLUG/*-design-*.md 2>/dev/null | head -1)
@@ -892,8 +896,8 @@ Execute every other section at full depth. When the loaded skill's instructions 
 After /office-hours completes, re-run the design doc check:
 ```bash
 setopt +o nomatch 2>/dev/null || true  # zsh compat
-SLUG=$(~/.claude/skills/gstack/browse/bin/remote-slug 2>/dev/null || basename "$(jj root 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null || pwd)")
-BRANCH=$(jj log -r @ --no-graph -T 'bookmarks.join(",")' 2>/dev/null | tr '/' '-' | sed 's/,$//' || echo 'no-branch')
+SLUG=$(~/.claude/skills/gstack/browse/bin/remote-slug 2>/dev/null || basename "$(jj root 2>/dev/null || pwd)")
+BRANCH=$(jj log -r 'heads(::@ & bookmarks())' --no-graph -T 'local_bookmarks.join(",")' 2>/dev/null | tr '/' '-' | sed 's/,$//' || echo 'no-branch')
 [ -z "$BRANCH" ] && BRANCH=$(jj log -r @ --no-graph -T 'change_id.short()' 2>/dev/null || echo 'no-branch')
 DESIGN=$(ls -t ~/.gstack/projects/$SLUG/*-$BRANCH-design-*.md 2>/dev/null | head -1)
 [ -z "$DESIGN" ] && DESIGN=$(ls -t ~/.gstack/projects/$SLUG/*-design-*.md 2>/dev/null | head -1)
@@ -1281,7 +1285,7 @@ THE PLAN:
 
 ```bash
 TMPERR_PV=$(mktemp /tmp/codex-planreview-XXXXXXXX)
-_REPO_ROOT=$(jj root 2>/dev/null || git rev-parse --show-toplevel) || { echo "ERROR: not in a jj or git repo" >&2; exit 1; }
+_REPO_ROOT=$(jj root) || { echo "ERROR: not in a jj repo" >&2; exit 1; }
 codex exec "<prompt>" -C "$_REPO_ROOT" -s read-only -c 'model_reasoning_effort="high"' --enable web_search_cached < /dev/null 2>"$TMPERR_PV"
 ```
 
@@ -1354,7 +1358,7 @@ If no tension points exist, note: "No cross-model tension — both reviewers agr
 
 **Persist the result:**
 ```bash
-~/.claude/skills/gstack/bin/gstack-review-log '{"skill":"codex-plan-review","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","status":"STATUS","source":"SOURCE","commit":"'"$(jj log -r @ --no-graph -T 'commit_id.short()' 2>/dev/null || git rev-parse --short HEAD)"'"}'
+~/.claude/skills/gstack/bin/gstack-review-log '{"skill":"codex-plan-review","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","status":"STATUS","source":"SOURCE","commit":"'"$(jj log -r @ --no-graph -T 'commit_id.short()' 2>/dev/null)"'"}'
 ```
 
 Substitute: STATUS = "clean" if no findings, "issues_found" if findings exist.

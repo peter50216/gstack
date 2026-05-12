@@ -149,7 +149,7 @@ Review the current branch diff with nested Claude in tool-less mode.
 1. Fetch base and capture diff:
 
 ```bash
-_REPO_ROOT=$(jj root 2>/dev/null || git rev-parse --show-toplevel) || { echo "ERROR: not in a jj or git repo" >&2; exit 1; }
+_REPO_ROOT=$(jj root) || { echo "ERROR: not in a jj repo" >&2; exit 1; }
 cd "$_REPO_ROOT"
 DIFF_FILE=$(mktemp /tmp/gstack-claude-diff-XXXXXX.patch)
 jj git fetch --remote origin --branch <base> 2>/dev/null || true

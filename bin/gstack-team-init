@@ -19,9 +19,9 @@ if [ "$MODE" != "optional" ] && [ "$MODE" != "required" ]; then
   exit 1
 fi
 
-# Must be in a jj or git repo
-if ! REPO_ROOT=$(jj root 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null); then
-  echo "Error: not in a jj or git repository. Run from your project root." >&2
+# Must be in a jj repo
+if ! REPO_ROOT=$(jj root 2>/dev/null); then
+  echo "Error: not in a jj repository. Run from your project root." >&2
   exit 1
 fi
 
@@ -41,7 +41,7 @@ if [ -d "$REPO_ROOT/.claude/skills/gstack" ] && [ ! -L "$REPO_ROOT/.claude/skill
     else
       echo '.claude/skills/gstack/' > "$REPO_ROOT/.gitignore"
     fi
-    ( cd "$REPO_ROOT" && jj file untrack .claude/skills/gstack/ 2>/dev/null ) || ( cd "$REPO_ROOT" && git rm -r --cached .claude/skills/gstack/ 2>/dev/null ) || true
+    ( cd "$REPO_ROOT" && jj file untrack .claude/skills/gstack/ 2>/dev/null ) || true
     rm -rf "$REPO_ROOT/.claude/skills/gstack"
     GENERATED+=(".gitignore")
     echo "  Removed vendored copy and added .claude/skills/gstack/ to .gitignore"
